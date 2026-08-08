@@ -44,6 +44,13 @@
             --success: #0a7a4a;
             --amber: #b8860b;
 
+            --risk-low: #0a7a4a;
+            --risk-low-bg: #edfce9;
+            --risk-medium: #b8860b;
+            --risk-medium-bg: #fbf3df;
+            --risk-high: #b8460e;
+            --risk-high-bg: #fdece6;
+
             --r-xs: 4px;
             --r-sm: 8px;
             --r-md: 16px;
@@ -289,6 +296,130 @@
             margin-top: 2px;
         }
 
+        /* ===== risk meter stat card ===== */
+        .risk-meter-card {
+            border-radius: var(--r-xs);
+            padding: 22px;
+            background: var(--soft-stone);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .risk-meter-card .stat-label {
+            font-size: 13px;
+            color: var(--body-muted);
+        }
+
+        .risk-meter-bar {
+            display: flex;
+            width: 100%;
+            height: 14px;
+            border-radius: var(--r-full);
+            overflow: hidden;
+            background: var(--border-light);
+        }
+
+        .risk-meter-seg {
+            position: relative;
+            height: 100%;
+            min-width: 3px;
+            transition: filter .15s ease;
+            cursor: pointer;
+        }
+
+        .risk-meter-seg:hover {
+            filter: brightness(0.92);
+        }
+
+        .risk-meter-seg.risk-high { background: var(--risk-high); }
+        .risk-meter-seg.risk-medium { background: var(--risk-medium); }
+        .risk-meter-seg.risk-low { background: var(--risk-low); }
+
+        .risk-meter-legend {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .risk-meter-legend-item {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--body-muted);
+            cursor: pointer;
+        }
+
+        .risk-meter-legend-item .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .risk-meter-legend-item .dot.risk-high { background: var(--risk-high); }
+        .risk-meter-legend-item .dot.risk-medium { background: var(--risk-medium); }
+        .risk-meter-legend-item .dot.risk-low { background: var(--risk-low); }
+
+        /* shared tooltip used by both the risk meter and the per-case risk dot */
+        .risk-tooltip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--primary);
+            color: #fff;
+            padding: 10px 12px;
+            border-radius: var(--r-xs);
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: normal;
+            width: max-content;
+            max-width: 230px;
+            z-index: 20;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, .22);
+        }
+
+        .risk-tooltip strong {
+            display: block;
+            font-family: var(--font-mono);
+            font-size: 10.5px;
+            letter-spacing: .3px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            color: #fff;
+        }
+
+        .risk-tooltip ul {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .risk-tooltip li {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .risk-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: var(--primary);
+        }
+
+        .risk-meter-seg:hover .risk-tooltip,
+        .risk-meter-legend-item:hover .risk-tooltip {
+            display: block;
+        }
+
         /* ===== main grid ===== */
         .dash-grid {
             display: grid;
@@ -345,20 +476,13 @@
             width: 100%;
         }
 
-        .filter-row {
-            display: flex;
-            gap: 8px;
-            padding: 16px 22px 0;
-            flex-wrap: wrap;
-        }
-
         .case-table {
             padding: 8px 0 4px;
         }
 
         .case-row {
             display: grid;
-            grid-template-columns: 2.2fr 1fr 1fr auto;
+            grid-template-columns: 2.4fr auto 1fr auto;
             align-items: center;
             gap: 12px;
             padding: 16px 22px;
@@ -398,33 +522,40 @@
             color: var(--slate);
         }
 
-        .status-badge {
-            justify-self: start;
-            font-size: 12px;
-            font-weight: 500;
-            padding: 5px 12px;
-            border-radius: var(--r-full);
+        /* ===== per-case risk indicator (replaces the old status badge) ===== */
+        .risk-dot-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .risk-dot {
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 0 0 1px var(--card-border);
+        }
+
+        .risk-dot.risk-high { background: var(--risk-high); }
+        .risk-dot.risk-medium { background: var(--risk-medium); }
+        .risk-dot.risk-low { background: var(--risk-low); }
+
+        .risk-dot-wrap .risk-tooltip {
+            bottom: calc(100% + 8px);
             white-space: nowrap;
+            max-width: none;
         }
 
-        .status-badge.needs {
-            background: #fdece6;
-            color: #b8460e;
-        }
-
-        .status-badge.review {
-            background: var(--pale-blue);
-            color: var(--action-blue);
-        }
-
-        .status-badge.resolved {
-            background: var(--pale-green);
-            color: var(--success);
+        .risk-dot-wrap:hover .risk-tooltip {
+            display: block;
         }
 
         .case-date {
             font-size: 12.5px;
             color: var(--muted);
+            justify-self: end;
         }
 
         .case-chevron {
@@ -605,39 +736,6 @@
             color: var(--muted);
         }
 
-        /* ===== activity feed ===== */
-        .activity-panel {
-            margin-top: 24px;
-        }
-
-        .activity-row {
-            display: flex;
-            gap: 12px;
-            padding: 13px 22px;
-            border-bottom: 1px solid var(--card-border);
-            align-items: flex-start;
-        }
-
-        .activity-row:last-child {
-            border-bottom: none;
-        }
-
-        .activity-icon {
-            font-size: 15px;
-            margin-top: 1px;
-        }
-
-        .activity-text {
-            font-size: 13.5px;
-            color: var(--ink);
-        }
-
-        .activity-time {
-            font-size: 11.5px;
-            color: var(--muted);
-            margin-top: 2px;
-        }
-
         /* ===== toast ===== */
         .toast {
             position: fixed;
@@ -664,7 +762,7 @@
         @media (max-width:640px) {
             .case-row {
                 grid-template-columns: 1fr auto;
-                grid-template-areas: "title chev" "status status" "date date";
+                grid-template-areas: "title chev" "risk risk" "date date";
                 row-gap: 8px;
             }
 
@@ -676,12 +774,14 @@
                 grid-area: chev;
             }
 
-            .case-row .status-badge {
-                grid-area: status;
+            .case-row .risk-dot-wrap {
+                grid-area: risk;
+                justify-content: flex-start;
             }
 
             .case-row .case-date {
                 grid-area: date;
+                justify-self: start;
             }
 
             .panel-header {
@@ -722,21 +822,8 @@
                             <input type="text" id="caseSearch" placeholder="Search your cases…">
                         </div>
                     </div>
-                    <div class="filter-row" id="filterRow">
-                        <button class="btn-pill-outline active" data-filter="all">All</button>
-                        <button class="btn-pill-outline" data-filter="needs">Action needed</button>
-                        <button class="btn-pill-outline" data-filter="review">In review</button>
-                        <button class="btn-pill-outline" data-filter="resolved">Resolved</button>
-                    </div>
                     <div class="case-table" id="caseTable"></div>
-                    <div class="empty-state" id="emptyState">No cases match this filter yet.</div>
-                </div>
-
-                <div class="panel activity-panel">
-                    <div class="panel-header">
-                        <h3>Recent Activity</h3>
-                    </div>
-                    <div id="activityList"></div>
+                    <div class="empty-state" id="emptyState">No cases match your search yet.</div>
                 </div>
             </div>
 
@@ -753,7 +840,7 @@
     </div>
 
     <div class="toast" id="toast"></div>
-   
+
 
     <script>
         // ==========================================================================
@@ -761,6 +848,10 @@
         // (see app.py: dashboard_data()). Cases ARE the chat history: each case
         // row is one conversation thread, "Continue conversation" / clicking a
         // row takes you into /case/<id> which loads that exact thread.
+        //
+        // Risk is derived client-side from each case's status (needs -> high,
+        // review -> medium, resolved -> low) unless the backend already sends
+        // an explicit `risk` field on the case, which takes priority.
         // ==========================================================================
 
         async function fetchDashboardData() {
@@ -779,22 +870,79 @@
             toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
         }
 
-        // ---- render: stats ----
+        // ---- risk helpers ----
+        const RISK_LABEL = { high: 'High risk', medium: 'Medium risk', low: 'Low risk' };
+        const STATUS_TO_RISK = { needs: 'high', review: 'medium', resolved: 'low' };
+
+        function riskOf(c) {
+            return c.risk || STATUS_TO_RISK[c.status] || 'medium';
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, m => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[m]));
+        }
+
+        // ---- render: stats (backend-driven, minus any pending/resolve stat —
+        // that's replaced by the risk meter below) ----
         function renderStats(stats) {
             const row = document.getElementById('statsRow');
-            row.innerHTML = stats.map(s => `
+            const filtered = (stats || []).filter(s => !/pending|resolve/i.test(s.label || ''));
+            row.innerHTML = filtered.map(s => `
         <div class="stat-card ${s.tone}">
           <span class="stat-num">${s.value}</span>
           <span class="stat-label">${s.label}</span>
           ${s.delta ? `<span class="stat-delta">${s.delta}</span>` : ''}
         </div>`).join('');
+            row.insertAdjacentHTML('beforeend', renderRiskMeterCard());
+        }
+
+        // ---- render: risk meter card (replaces the old "pending resolve" stat) ----
+        function riskTooltipHtml(level, cases) {
+            const items = cases.length
+                ? cases.slice(0, 6).map(c => `<li>${escapeHtml(c.title)}</li>`).join('')
+                : '<li>No cases at this level</li>';
+            const more = cases.length > 6 ? `<li>+${cases.length - 6} more</li>` : '';
+            return `
+        <div class="risk-tooltip">
+          <strong>${RISK_LABEL[level]} · ${cases.length}</strong>
+          <ul>${items}${more}</ul>
+        </div>`;
+        }
+
+        function renderRiskMeterCard() {
+            const byRisk = { high: [], medium: [], low: [] };
+            ALL_CASES.forEach(c => byRisk[riskOf(c)].push(c));
+            const total = ALL_CASES.length || 1;
+
+            const segs = ['high', 'medium', 'low'].map(level => {
+                const cases = byRisk[level];
+                const pct = Math.max(cases.length ? (cases.length / total) * 100 : 0, cases.length ? 4 : 0);
+                if (!cases.length) return '';
+                return `
+          <div class="risk-meter-seg risk-${level}" style="width:${pct}%">
+            ${riskTooltipHtml(level, cases)}
+          </div>`;
+            }).join('');
+
+            const legend = ['high', 'medium', 'low'].map(level => `
+        <span class="risk-meter-legend-item">
+          <span class="dot risk-${level}"></span>${RISK_LABEL[level]} · ${byRisk[level].length}
+          ${riskTooltipHtml(level, byRisk[level])}
+        </span>`).join('');
+
+            return `
+        <div class="risk-meter-card">
+          <span class="stat-label">Risk meter</span>
+          <div class="risk-meter-bar">${segs}</div>
+          <div class="risk-meter-legend">${legend}</div>
+        </div>`;
         }
 
         // ---- render: cases (= chat history) ----
         let ALL_CASES = [];
-        let currentFilter = 'all';
         let currentSearch = '';
-        const STATUS_LABEL = { needs: 'Action needed', review: 'In review', resolved: 'Resolved' };
         const STEPS = ['Submitted', 'Under review', 'Guidance ready', 'Resolved'];
 
         function renderCases() {
@@ -802,8 +950,7 @@
             const empty = document.getElementById('emptyState');
             const q = currentSearch.toLowerCase();
             const filtered = ALL_CASES.filter(c =>
-                (currentFilter === 'all' || c.status === currentFilter) &&
-                (q === '' || c.title.toLowerCase().includes(q) || c.category.toLowerCase().includes(q))
+                q === '' || c.title.toLowerCase().includes(q) || c.category.toLowerCase().includes(q)
             );
 
             if (filtered.length === 0) {
@@ -813,13 +960,18 @@
             }
             empty.classList.remove('show');
 
-            table.innerHTML = filtered.map(c => `
+            table.innerHTML = filtered.map(c => {
+                const level = riskOf(c);
+                return `
         <div class="case-row" data-id="${c.id}">
           <div class="case-title-cell">
             <strong>${c.title}</strong>
             <span class="case-cat">${c.category}</span>
           </div>
-          <span class="status-badge ${c.status}">${STATUS_LABEL[c.status]}</span>
+          <div class="risk-dot-wrap">
+            <span class="risk-dot risk-${level}"></span>
+            ${riskTooltipHtml(level, [c])}
+          </div>
           <span class="case-date">${c.updated}</span>
           <span class="case-chevron">›</span>
         </div>
@@ -837,7 +989,8 @@
             ${c.status !== 'resolved' ? `<button class="btn-pill-outline mark-resolved" data-id="${c.id}">Mark as resolved</button>` : ''}
           </div>
         </div>
-      `).join('');
+      `;
+            }).join('');
 
             // Clicking anywhere on the row (except the resolve button) opens
             // that case's chat thread directly — the expand-to-preview is just
@@ -857,7 +1010,7 @@
                     }
                 });
                 row.addEventListener('click', e => {
-                    if (e.target.closest('.mark-resolved') || e.target.closest('.case-chevron')) return;
+                    if (e.target.closest('.mark-resolved') || e.target.closest('.case-chevron') || e.target.closest('.risk-dot-wrap')) return;
                     window.location.href = `/case/${row.dataset.id}`;
                 });
             });
@@ -870,9 +1023,10 @@
                         const res = await fetch(`/api/dashboard/cases/${id}/resolve`, { method: 'POST' });
                         if (!res.ok) throw new Error();
                         const c = ALL_CASES.find(x => String(x.id) === String(id));
-                        if (c) { c.status = 'resolved'; c.step = 3; c.updated = 'Just now'; }
+                        if (c) { c.status = 'resolved'; c.risk = 'low'; c.step = 3; c.updated = 'Just now'; }
                         showToast('Case marked as resolved.');
                         renderCases();
+                        renderRiskMeter();
                     } catch {
                         showToast('Could not update that case — try again.');
                     }
@@ -880,14 +1034,12 @@
             });
         }
 
-        document.getElementById('filterRow').addEventListener('click', e => {
-            const btn = e.target.closest('.btn-pill-outline');
-            if (!btn) return;
-            document.querySelectorAll('#filterRow .btn-pill-outline').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentFilter = btn.dataset.filter;
-            renderCases();
-        });
+        function renderRiskMeter() {
+            const row = document.getElementById('statsRow');
+            const existing = row.querySelector('.risk-meter-card');
+            if (existing) existing.remove();
+            row.insertAdjacentHTML('beforeend', renderRiskMeterCard());
+        }
 
         document.getElementById('caseSearch').addEventListener('input', e => {
             currentSearch = e.target.value;
@@ -914,20 +1066,6 @@
                     window.location.href = `/case/${item.dataset.caseId}`;
                 });
             });
-        }
-
-        // ---- render: activity ----
-        function renderActivity(activity) {
-            const list = document.getElementById('activityList');
-            if (!activity.length) {
-                list.innerHTML = `<div class="activity-row"><span class="activity-text" style="color:var(--muted)">No activity yet.</span></div>`;
-                return;
-            }
-            list.innerHTML = activity.map(a => `
-        <div class="activity-row">
-          <span class="activity-icon">${a.icon}</span>
-          <div><div class="activity-text">${a.text}</div><div class="activity-time">${a.time}</div></div>
-        </div>`).join('');
         }
 
         // ---- sidebar upload -> creates/attaches a case, redirects into that chat ----
@@ -971,11 +1109,10 @@
         (async function init() {
             try {
                 const data = await fetchDashboardData();
-                renderStats(data.stats);
                 ALL_CASES = data.cases;
+                renderStats(data.stats);
                 renderCases();
                 renderDocs(data.documents);
-                renderActivity(data.activity);
             } catch (err) {
                 showToast('Could not load your dashboard — refresh to try again.');
             }

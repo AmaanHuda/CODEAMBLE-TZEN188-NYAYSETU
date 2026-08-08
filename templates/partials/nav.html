@@ -206,16 +206,19 @@
 
         <div class="nav-right">
             {% if user %}
+            {% if request.path.startswith('/dashboard') %}
+            <a href="/" class="btn btn-outline">Home</a>
+            {% else %}
+            <a href="/dashboard" class="btn btn-outline">Dashboard</a>
+            {% endif %}
             <div class="account-area" id="accountArea">
                 <button class="account-toggle" id="accountToggle" aria-haspopup="true" aria-expanded="false">
-                    <span class="account-avatar">{{ user.initial or (user.name[0] | upper if user.name else 'U')
-                        }}</span>
+                    <span class="account-avatar">{{ user.initial or (user.name[0] | upper if user.name else 'U') }}</span>
                     <span class="account-name">{{ user.first_name or user.name }}</span>
                     <span class="account-caret">▾</span>
                 </button>
                 <ul class="account-menu" id="accountMenu">
-                    <li><a href="/dashboard">Dashboard</a></li>
-                    <li class="divider"><a href="/logout" class="danger">Logout</a></li>
+                    <li><a href="/logout" class="danger">Logout</a></li>
                 </ul>
             </div>
             {% else %}

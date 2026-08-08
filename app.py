@@ -37,6 +37,22 @@ with app.app_context():
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100MB, matches the frontend's stated limit
 
 
+@app.context_processor
+def inject_user():
+    """Makes `user` available in every template automatically, so the nav
+    partial's {% if user %} works no matter which route rendered the page.
+    Without this, only routes that explicitly passed user=... into
+    render_template() showed the logged-in state in the nav — e.g. home()
+    never set it, so the nav showed Login/Signup on '/' even while logged
+    in. Explicitly passing user=... into a specific render_template() call
+    still overrides this if you ever need to.
+    """
+    user = None
+    if session.get("user_id"):
+        user = db.get_user_by_id(session["user_id"])
+    return {"user": user}
+
+
 def login_required(view_func):
     @wraps(view_func)
     def wrapped(*args, **kwargs):
@@ -59,8 +75,10 @@ def home():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    user = db.get_user_by_id(session["user_id"])
-    return render_template("dashboard.html", user=user)
+    # `user` no longer needs to be passed explicitly here — inject_user()
+    # above supplies it to every template, including this one. Left the
+    # lookup out entirely rather than keep a now-redundant duplicate call.
+    return render_template("dashboard.html")
 
 
 @app.route("/login", methods=["GET"])
