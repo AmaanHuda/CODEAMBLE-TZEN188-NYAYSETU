@@ -567,6 +567,33 @@
                 max-width: 92%;
             }
         }
+        /*mic implementation*/
+        .mic-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 18px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .mic-btn:hover {
+            background: rgba(255, 255, 255, .1);
+        }
+
+        .mic-btn.recording {
+            background: #b30000;
+            animation: micPulse 1.2s infinite ease-in-out;
+        }
+
+        @keyframes micPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(179, 0, 0, 0); }
+            50% { transform: scale(1.1); box-shadow: 0 0 10px rgba(179, 0, 0, 0.6); }
+        }
     </style>
 </head>
 
@@ -603,7 +630,7 @@
             <div class="chat-input-dock">
                 <div class="console-input-row">
                     <button class="attach-btn" id="attachBtn" type="button" aria-label="Attach a file">📎</button>
-                    <!-- Strict PDF acceptance filter applied -->
+                    <button class="mic-btn" id="micBtn" type="button" aria-label="Voice input">🎤</button>
                     <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
                     <input type="text" id="chatInput" placeholder="Type your reply…" autocomplete="off" data-i18n-placeholder="input_placeholder">
                     <button class="send-btn" id="sendBtn" aria-label="Send message">➤</button>
@@ -648,6 +675,59 @@
         };
 
         let currentLang = localStorage.getItem('nyaysetu_lang') || 'en';
+
+        // Speech Recognition Setup
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const micBtn = document.getElementById('micBtn');
+        let recognition = null;
+        let isRecording = false;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = true;
+
+            // Map current language selection to speech locale
+            const langLocales = { en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN' };
+
+            micBtn.addEventListener('click', () => {
+                if (isRecording) {
+                    recognition.stop();
+                    return;
+                }
+
+                recognition.lang = langLocales[currentLang] || 'en-IN';
+                try {
+                    recognition.start();
+                    isRecording = true;
+                    micBtn.classList.add('recording');
+                } catch (e) {
+                    console.error("Mic start error:", e);
+                }
+            });
+
+            recognition.onresult = (event) => {
+                let transcript = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                document.getElementById('chatInput').value = transcript;
+            };
+
+            recognition.onend = () => {
+                isRecording = false;
+                micBtn.classList.remove('recording');
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Speech error:", event.error);
+                isRecording = false;
+                micBtn.classList.remove('recording');
+            };
+        } else {
+            // Hide mic button if browser doesn't support Web Speech API
+            micBtn.style.display = 'none';
+        }
 
         function applyLanguage(lang) {
             currentLang = lang;
