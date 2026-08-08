@@ -1,4 +1,5 @@
 import os
+import base64
 from functools import wraps
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
@@ -12,10 +13,8 @@ import db
 load_dotenv()
 
 # Import the Gemini service AFTER load_dotenv() so its module-level
-# client init (if any) sees the key. If gemini_service reads the key
-# lazily inside a function instead, import order won't matter, but
-# this is the safe default either way.
- # adjust name if different
+# client init sees the key.
+from gemini_service import get_legal_ai_reply, analyze_legal_document
 
 app = Flask(__name__)
 app.secret_key = os.environ.get(
@@ -91,51 +90,92 @@ def logout():
 @app.route("/new-issue")
 @login_required
 def chat():
-    return render_template("new-issue.html")
+    # Starting a fresh issue should start a fresh case, not keep appending
+    # to whatever case was active before.
+    session.pop("active_case_id", None)
+    return render_template("new_issue.html")
 
 
 @app.route("/api/legal-chat", methods=["POST"])
 @login_required
+@csrf.exempt
 def legal_chat():
     data = request.get_json(silent=True) or {}
     message = (data.get("message") or "").strip()
-    case_id = data.get("case_id")
-    language = data.get("language", "en")
 
     if not message:
         return jsonify({"error": "Message is required."}), 400
 
     user_id = session["user_id"]
 
-    # Get or create the case this conversation belongs to.
-    # Adjust to your actual db.py function names if different.
-    if case_id:
-        case = db.get_case(case_id, user_id=user_id)
-        if not case:
-            return jsonify({"error": "Case not found."}), 404
-    else:
+    # One active case per browser session; a fresh case starts when the
+    # user lands on /new-issue (see chat() above) or has no active case yet.
+    case_id = session.get("active_case_id")
+    case = db.get_case(case_id, user_id=user_id) if case_id else None
+    if not case:
         case = db.create_case(user_id=user_id)
+        session["active_case_id"] = case["id"]
+
+    # Build the conversation history Gemini needs from what's already
+    # persisted for this case (source of truth is Postgres, not the client).
+    prior_messages = db.get_case_messages(case["id"])
+    history = [
+        {"role": "model" if m["role"] == "assistant" else "user", "content": m["content"]}
+        for m in prior_messages
+    ]
 
     # Persist the user's message
     db.save_chat_message(case_id=case["id"], role="user", content=message)
 
     try:
-        gemini_result = generate_legal_response(
-            message=message,
-            case_id=case["id"],
-            language=language,
-        )
-    except Exception as e:
+        result = get_legal_ai_reply(history, message)
+    except Exception:
         app.logger.exception("Gemini call failed")
         return jsonify({"error": "Failed to generate a response. Please try again."}), 502
 
     # Persist the assistant's reply
-    db.save_chat_message(case_id=case["id"], role="assistant", content=gemini_result)
+    db.save_chat_message(case_id=case["id"], role="assistant", content=result.get("reply", ""))
 
-    return jsonify({
-        "case_id": case["id"],
-        "response": gemini_result,
-    })
+    # Keep the case row's category/summary/strength in sync as the model
+    # learns more, so a case list / dashboard elsewhere stays accurate.
+    if result.get("category") or result.get("summary") or result.get("strength") is not None:
+        db.update_case_meta(
+            case["id"],
+            category=result.get("category"),
+            summary=result.get("summary"),
+            strength=result.get("strength"),
+        )
+
+    # Response is flat (not nested) — chat.html reads result.type / result.reply /
+    # result.category / result.summary / result.strength directly off the JSON body.
+    result["case_id"] = case["id"]
+    return jsonify(result)
+
+
+@app.route("/api/analyze-document", methods=["POST"])
+@login_required
+@csrf.exempt
+def analyze_document():
+    data = request.get_json(silent=True) or {}
+    file_b64 = data.get("file_base64")
+    mime_type = data.get("mime_type") or "application/pdf"
+    file_name = data.get("file_name", "")
+
+    if not file_b64:
+        return jsonify({"error": "file_base64 is required."}), 400
+
+    try:
+        file_bytes = base64.b64decode(file_b64)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid base64 file data."}), 400
+
+    try:
+        result = analyze_legal_document(file_bytes, mime_type=mime_type, file_name=file_name)
+    except Exception:
+        app.logger.exception("Document analysis failed")
+        return jsonify({"error": "Failed to analyze document."}), 502
+
+    return jsonify(result)
 
 
 if __name__ == "__main__":
