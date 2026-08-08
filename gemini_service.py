@@ -11,7 +11,7 @@ if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY env var not set (get one from Google AI Studio)")
 
 _client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL_ID = "gemini-3.1-flash-lite"
+MODEL_ID = "gemini-2.5-flash"
 
 SYSTEM_PROMPT = """You are the case-intake assistant for NyaySetu, a free legal guidance platform for Indian citizens.
 
@@ -40,6 +40,9 @@ CONVERSATION FLOW — ADAPTABLE FACT-GATHERING:
    - *Adaptive Flow:* If the user's very first message is extremely thorough and contains all necessary dimensions, you may resolve immediately on the first turn without asking any follow-up questions.
 OUTPUT FORMATTING FOR THE "reply" FIELD:
 When you provide a final answer (type is "answer"), you must NOT write a plain-text paragraph. You must format the "reply" string using this exact 4-section structured template, written in the same language the user is writing in (English, Hindi, or Marathi):
+
+LANGUAGE RULE:
+- Always respond in the requested language (English, Hindi / हिंदी in Devanagari script, or Marathi / मराठी in Devanagari script).
 
 ### 1. Summary of Your Situation
 [Provide a clear, plain-language summary showing our complete understanding of the user's specific situation and conflict in 2 sentences]
@@ -173,22 +176,41 @@ def build_user_message(document_text: str) -> str:
 
 
 def _history_to_contents(history):
-    """Convert [{"role": "user"|"model", "content": str}, ...] into genai Content objects."""
+    """Convert [{"role": "user"|"model", "content": str}, ...] into valid alternating genai Content objects."""
     contents = []
+    last_role = None
     for turn in history or []:
         role = "model" if turn.get("role") == "model" else "user"
-        text = turn.get("content", "") or ""
+        text = (turn.get("content", "") or "").strip()
         if not text:
             continue
-        contents.append(types.Content(role=role, parts=[types.Part(text=text)]))
+        # Gemini history turns must start with a 'user' turn
+        if not contents and role != "user":
+            continue
+        if role == last_role:
+            contents[-1].parts[0].text += f"\n\n{text}"
+        else:
+            contents.append(types.Content(role=role, parts=[types.Part(text=text)]))
+            last_role = role
     return contents
 
 
-def get_legal_ai_reply(history, message):
-    """
-    history: list of {"role": "user"|"model", "content": str}, oldest first.
-    Returns dict: {type, reply, category, summary, strength}
-    """
+def get_legal_ai_reply(history, message, language="en"):
+    lang_names = {
+        "hi": "Hindi (हिंदी) in Devanagari script",
+        "mr": "Marathi (मराठी) in Devanagari script",
+        "en": "English"
+    }
+    target_lang = lang_names.get(language, "English")
+
+    # Inject strict language rule directly into System Prompt
+    dynamic_sys_prompt = (
+        SYSTEM_PROMPT +
+        f"\n\nCRITICAL LANGUAGE MANDATE:\n"
+        f"- The user selected {target_lang}.\n"
+        f"- You MUST write your ENTIRE reply (including all headings, titles, summary, next steps, checklist items, and precautions) strictly in {target_lang}.\n"
+    )
+
     contents = _history_to_contents(history)
     contents.append(types.Content(role="user", parts=[types.Part(text=message)]))
 
@@ -196,7 +218,7 @@ def get_legal_ai_reply(history, message):
         model=MODEL_ID,
         contents=contents,
         config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
+            system_instruction=dynamic_sys_prompt,
             response_mime_type="application/json",
             temperature=0.4,
         ),
@@ -243,7 +265,8 @@ def analyze_legal_document(file_bytes, mime_type="application/pdf", file_name=""
     except (ValueError, TypeError):
         data = {"explanation": raw or "Could not analyze this document.", "trust_score": 50, "trust_reasons": []}
 
-    data.setdefault("explanation", "")
+    explanation = data.get("explanation") or data.get("summary") or ""
+    data["explanation"] = explanation
     data.setdefault("trust_score", 50)
     data.setdefault("trust_reasons", [])
 

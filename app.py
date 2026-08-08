@@ -102,6 +102,7 @@ def chat():
 def legal_chat():
     data = request.get_json(silent=True) or {}
     message = (data.get("message") or "").strip()
+    language = data.get("language") or "en"
 
     if not message:
         return jsonify({"error": "Message is required."}), 400
@@ -128,7 +129,7 @@ def legal_chat():
     db.save_chat_message(case_id=case["id"], role="user", content=message)
 
     try:
-        result = get_legal_ai_reply(history, message)
+        result = get_legal_ai_reply(history, message, language=language)
     except Exception:
         app.logger.exception("Gemini call failed")
         return jsonify({"error": "Failed to generate a response. Please try again."}), 502

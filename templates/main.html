@@ -704,19 +704,24 @@
     <!-- ================= HERO ================= -->
     <section class="hero">
         <div class="wrap hero-copy">
-            <span class="eyebrow">AI-powered legal guidance for India</span>
-            <h1>Understand your rights.<br>
+            <span class="eyebrow" data-i18n="hero_eyebrow">AI-powered legal guidance for India</span>
+            <h1 data-i18n="hero_h1">Understand your rights.<br>
                 <span class="lang-flip-wrap">
                     <span class="lang-flip-text" id="langFlipText" lang="en">In your language.</span>
                 </span>
             </h1>
-            <p class="lead">NyaySetu turns your problem into clear next steps — free, private, and available
-                in 8 Indian languages.</p>
+            <p class="lead" data-i18n="hero_lead">NyaySetu turns your problem into clear next steps — free, private, and available
+                in Indian languages.</p>
             <div class="hero-ctas">
-                <a href="/new-issue" class="btn btn-primary">Describe Your Issue →</a>
-                <a href="#faq" class="btn btn-text">FAQ</a>
+                <a href="/new-issue" class="btn btn-primary" data-i18n="cta_btn">Describe Your Issue →</a>
+                <a href="#faq" class="btn btn-text" data-i18n="faq_btn">FAQ</a>
+                <div class="lang-picker" id="homeLangPicker" style="display:inline-flex; background:rgba(0,0,0,0.05); border:1px solid #e2e8e4; border-radius:99px; padding:3px; margin-left:12px;">
+                    <button class="lang-btn active" data-lang="en" style="padding:6px 12px; border-radius:99px; font-weight:600; font-size:13px;">EN</button>
+                    <button class="lang-btn" data-lang="hi" style="padding:6px 12px; border-radius:99px; font-weight:600; font-size:13px;">हिंदी</button>
+                    <button class="lang-btn" data-lang="mr" style="padding:6px 12px; border-radius:99px; font-weight:600; font-size:13px;">मराठी</button>
+                </div>
             </div>
-            <p class="hero-note">No fees. No account required to explore your rights.</p>
+            <p class="hero-note" data-i18n="hero_note">No fees. No account required to explore your rights.</p>
         </div>
 
         <div class="wrap hero-media">
@@ -754,45 +759,31 @@
     <!-- ================= FAQ ================= -->
     <section class="wrap faq-section" id="faq">
         <div class="section-head">
-            <h2>Frequently asked questions</h2>
+            <h2 data-i18n="faq_title">Frequently asked questions</h2>
         </div>
-        <div class="faq-list" id="faqList">
-            <div class="faq-item">
-                <button class="faq-q">Is NyaySetu free to use?<span class="faq-plus">+</span></button>
-                <div class="faq-a">
-                    <p>Yes. Every core feature — describing an issue, analyzing documents, and reading rights guides
-                        — is free for all Indian citizens, with no hidden fees.</p>
-                </div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">Is my information kept private?<span class="faq-plus">+</span></button>
-                <div class="faq-a">
-                    <p>Your case details and documents are stored securely and are never shared with third parties
-                        without your consent.</p>
-                </div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">Does NyaySetu replace a lawyer?<span class="faq-plus">+</span></button>
-                <div class="faq-a">
-                    <p>No. NyaySetu helps you understand your situation and prepare, but it is not a substitute for
-                        professional legal advice. For representation, use Find a Lawyer to connect with a verified
-                        professional.</p>
-                </div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">Which languages are supported?<span class="faq-plus">+</span></button>
-                <div class="faq-a">
-                    <p>NyaySetu currently supports English, Hindi, and six other Indian languages, with more being
-                        added.</p>
-                </div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">How does the AI understand my case?<span class="faq-plus">+</span></button>
-                <div class="faq-a">
-                    <p>You describe your situation conversationally, and the system asks follow-up questions to
-                        build a structured case file, mapped against the relevant laws.</p>
-                </div>
-            </div>
+        <div class="faq-item">
+        <button class="faq-q"><span data-i18n="faq1_q">Is NyaySetu free to use?</span><span class="faq-plus">+</span></button>
+        <div class="faq-a"><p data-i18n="faq1_a">Yes. Every core feature is free for all Indian citizens.</p></div>
+        </div>
+
+        <div class="faq-item">
+            <button class="faq-q"><span data-i18n="faq2_q">Is my information kept private?</span><span class="faq-plus">+</span></button>
+            <div class="faq-a"><p data-i18n="faq2_a">Your case details and documents are stored securely and never shared without your consent.</p></div>
+        </div>
+
+        <div class="faq-item">
+            <button class="faq-q"><span data-i18n="faq3_q">Does NyaySetu replace a lawyer?</span><span class="faq-plus">+</span></button>
+            <div class="faq-a"><p data-i18n="faq3_a">No. NyaySetu helps you understand your legal situation and prepare, but is not a legal substitute for a lawyer.</p></div>
+        </div>
+
+        <div class="faq-item">
+            <button class="faq-q"><span data-i18n="faq4_q">Which languages are supported?</span><span class="faq-plus">+</span></button>
+            <div class="faq-a"><p data-i18n="faq4_a">NyaySetu currently supports English, Hindi, and Marathi.</p></div>
+        </div>
+
+        <div class="faq-item">
+            <button class="faq-q"><span data-i18n="faq5_q">How does the AI understand my case?</span><span class="faq-plus">+</span></button>
+            <div class="faq-a"><p data-i18n="faq5_a">You describe your situation conversationally, and the system asks follow-up questions to build a structured guide.</p></div>
         </div>
     </section>
 
@@ -800,6 +791,99 @@
 
     <!-- ================= PAGE SCRIPT (only for sections defined on this page) ================= -->
     <script>
+        const homeI18n = {
+            en: {
+                hero_eyebrow: "AI-powered legal guidance for India",
+                hero_h1: "Understand your rights.",
+                hero_lead: "NyaySetu turns your problem into clear next steps — free, private, and available in Indian languages.",
+                cta_btn: "Describe Your Issue →",
+                faq_btn: "FAQ",
+                hero_note: "No fees. No account required to explore your rights.",
+                faq_title: "Frequently asked questions",
+                faq1_q: "Is NyaySetu free to use?",
+                faq1_a: "Yes. Every core feature is free for all Indian citizens.",
+                faq2_q: "Is my information kept private?",
+                faq2_a: "Your case details and documents are stored securely and never shared without your consent.",
+                faq3_q: "Does NyaySetu replace a lawyer?",
+                faq3_a: "No. NyaySetu helps you understand your legal situation and prepare, but is not a legal substitute for a lawyer.",
+                faq4_q: "Which languages are supported?",
+                faq4_a: "NyaySetu currently supports English, Hindi, and Marathi.",
+                faq5_q: "How does the AI understand my case?",
+                faq5_a: "You describe your situation conversationally, and the system asks follow-up questions to build a structured guide."
+            },
+            hi: {
+                hero_eyebrow: "भारत के लिए एआई-संचालित कानूनी मार्गदर्शन",
+                hero_h1: "अपने अधिकारों को समझें।",
+                hero_lead: "न्यायसेतु आपकी समस्या को स्पष्ट अगले कदमों में बदलता है — मुफ्त, निजी और भारतीय भाषाओं में उपलब्ध।",
+                cta_btn: "अपनी समस्या बताएं →",
+                faq_btn: "सामान्य प्रश्न",
+                hero_note: "कोई शुल्क नहीं। अपने अधिकारों को जानने के लिए किसी खाते की आवश्यकता नहीं है।",
+                faq_title: "अक्सर पूछे जाने वाले प्रश्न",
+                faq1_q: "क्या न्यायसेतु का उपयोग मुफ्त है?",
+                faq1_a: "हाँ। सभी भारतीय नागरिकों के लिए हर मुख्य विशेषता मुफ्त है।",
+                faq2_q: "क्या मेरी जानकारी निजी रखी जाती है?",
+                faq2_a: "आपके मामले के विवरण और फाइलें सुरक्षित रूप से संग्रहीत की जाती हैं और बिना सहमति साझा नहीं की जाती हैं।",
+                faq3_q: "क्या न्यायसेतु वकील का स्थान लेता है?",
+                faq3_a: "नहीं। न्यायसेतु आपकी कानूनी स्थिति को समझने में मदद करता है, लेकिन यह वकील का विकल्प नहीं है।",
+                faq4_q: "कौन सी भाषाएं समर्थित हैं?",
+                faq4_a: "न्यायसेतु वर्तमान में अंग्रेजी, हिंदी और मराठी का समर्थन करता है।",
+                faq5_q: "एआई मेरे मामले को कैसे समझता है?",
+                faq5_a: "आप बातचीत के रूप में अपनी स्थिति का वर्णन करते हैं, और प्रणाली आगे के प्रश्न पूछकर एक मार्गदर्शिका बनाती है।"
+            },
+            mr: {
+                hero_eyebrow: "भारतासाठी एआय-आधारित कायदेशीर मार्गदर्शन",
+                hero_h1: "आपले हक्क समजून घ्या.",
+                hero_lead: "न्यायसेतू तुमची समस्या स्पष्ट पुढील टप्प्यांमध्ये बदलते — मोफत, खाजगी आणि भारतीय भाषांमध्ये उपलब्ध.",
+                cta_btn: "आपली समस्या सांगा →",
+                faq_btn: "सतत विचारले जाणारे प्रश्न",
+                hero_note: "कोणतेही शुल्क नाही. तुमचे हक्क समजून घेण्यासाठी खात्याची गरज नाही.",
+                faq_title: "सतत विचारले जाणारे प्रश्न",
+                faq1_q: "न्यायसेतू वापरणे मोफत आहे का?",
+                faq1_a: "होय. सर्व मुख्य वैशिष्ट्ये सर्व भारतीय नागरिकांसाठी मोफत आहेत.",
+                faq2_q: "माझी माहिती खाजगी ठेवली जाते का?",
+                faq2_a: "तुमच्या प्रकरणाचा तपशील आणि कागदपत्रे सुरक्षित ठेवले जातात व तुमच्या संमतीशिवाय शेअर केले जात नाहीत.",
+                faq3_q: "न्यायसेतू वकीलाची जागा घेते का?",
+                faq3_a: "नाही. न्यायसेतू तुम्हाला कायदेशीर परिस्थिती समजून घेण्यास मदत करते, परंतु हा वकीलाचा पर्याय नाही.",
+                faq4_q: "कोणत्या भाषांना पाठिंबा आहे?",
+                faq4_a: "न्यायसेतू सध्या इंग्रजी, हिंदी आणि मराठी भाषांना पाठिंबा देते.",
+                faq5_q: "एआय माझे प्रकरण कसे समजून घेते?",
+                faq5_a: "तुम्ही तुमची परिस्थिती संभाषणात्मक रीतीने सांगता आणि प्रणाली पुढील प्रश्न विचारून मार्गदर्शक तयार करते."
+            }
+        };
+
+        let activeLang = localStorage.getItem('nyaysetu_lang') || 'en';
+
+        function updateHomePageLang(lang) {
+            activeLang = lang;
+            localStorage.setItem('nyaysetu_lang', lang);
+
+            document.querySelectorAll('#homeLangPicker .lang-btn').forEach(btn => {
+                if (btn.getAttribute('data-lang') === lang) {
+                    btn.style.background = '#00684a';
+                    btn.style.color = '#ffffff';
+                } else {
+                    btn.style.background = 'transparent';
+                    btn.style.color = '#101a17';
+                }
+            });
+
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (homeI18n[lang] && homeI18n[lang][key]) {
+                    el.textContent = homeI18n[lang][key];
+                }
+            });
+        }
+
+        document.querySelectorAll('#homeLangPicker .lang-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                updateHomePageLang(btn.getAttribute('data-lang'));
+            });
+        });
+
+        // Initialize on load
+        updateHomePageLang(activeLang);
+
         // FAQ accordion
         document.querySelectorAll('.faq-item').forEach(item => {
             const q = item.querySelector('.faq-q');
