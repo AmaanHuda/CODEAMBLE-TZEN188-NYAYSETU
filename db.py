@@ -16,10 +16,6 @@ except ImportError:
 #
 # Set DATABASE_URL to your Neon connection string, e.g.:
 #   postgresql://<user>:<password>@<host>/<dbname>?sslmode=require
-# (Neon gives you this exact string on the project's Connection Details page.)
-#
-# Easiest way: create a file named .env in the same folder as app.py containing:
-#   DATABASE_URL=postgresql://<user>:<password>@<host>/<dbname>?sslmode=require
 # --------------------------------------------------------------------------
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -34,8 +30,6 @@ def get_pool():
                 "DATABASE_URL is not set. Put your Neon connection string in the "
                 "environment (or a .env file) before starting the app."
             )
-        # sslmode/channel_binding are already in DATABASE_URL's query string —
-        # don't pass them again as kwargs, or libpq errors on duplicate params.
         _pool = SimpleConnectionPool(1, 10, DATABASE_URL)
     return _pool
 
@@ -77,12 +71,18 @@ def init_db():
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 );
                 """)
+            # file_url/file_name/file_type/file_public_id hold Cloudinary's
+            # response — Neon never stores the actual file bytes, only the link.
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS chat_messages (
                     id SERIAL PRIMARY KEY,
                     case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
                     role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
                     content TEXT NOT NULL,
+                    file_url TEXT,
+                    file_name TEXT,
+                    file_type TEXT,
+                    file_public_id TEXT,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 );
                 """)
@@ -90,6 +90,13 @@ def init_db():
                 CREATE INDEX IF NOT EXISTS idx_chat_messages_case_id
                 ON chat_messages (case_id, created_at);
                 """)
+            # CREATE TABLE IF NOT EXISTS is a no-op if the table already existed
+            # from before these columns were added — patch them in explicitly so
+            # deployments against an older schema self-heal on startup.
+            cur.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_url TEXT;")
+            cur.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_name TEXT;")
+            cur.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_type TEXT;")
+            cur.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_public_id TEXT;")
         conn.commit()
 
 
@@ -218,16 +225,21 @@ def list_cases_for_user(user_id):
 # Chat messages
 # --------------------------------------------------------------------------
 
-def save_chat_message(case_id, role, content):
+def save_chat_message(case_id, role, content, file_url=None, file_name=None,
+                       file_type=None, file_public_id=None):
+    """
+    file_url/file_public_id come straight from Cloudinary's upload response —
+    the file itself lives on Cloudinary, only the reference is stored here.
+    """
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                INSERT INTO chat_messages (case_id, role, content)
-                VALUES (%s, %s, %s)
-                RETURNING id, case_id, role, content, created_at;
+                INSERT INTO chat_messages (case_id, role, content, file_url, file_name, file_type, file_public_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, case_id, role, content, file_url, file_name, file_type, file_public_id, created_at;
                 """,
-                (case_id, role, content),
+                (case_id, role, content, file_url, file_name, file_type, file_public_id),
             )
             msg = cur.fetchone()
         conn.commit()
@@ -239,7 +251,7 @@ def get_case_messages(case_id):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, case_id, role, content, created_at
+                SELECT id, case_id, role, content, file_url, file_name, file_type, file_public_id, created_at
                 FROM chat_messages WHERE case_id = %s ORDER BY created_at ASC;
                 """,
                 (case_id,),

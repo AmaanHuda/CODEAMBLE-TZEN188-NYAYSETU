@@ -2,6 +2,8 @@ import os
 import base64
 from functools import wraps
 
+import cloudinary
+import cloudinary.uploader
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -16,6 +18,13 @@ load_dotenv()
 # client init sees the key.
 from gemini_service import get_legal_ai_reply, analyze_legal_document
 
+cloudinary.config(
+    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.environ.get("CLOUDINARY_API_KEY"),
+    api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
+    secure=True,
+)
+
 app = Flask(__name__)
 app.secret_key = os.environ.get(
     "SECRET_KEY", "dev-only-fallback-key"
@@ -24,6 +33,8 @@ csrf = CSRFProtect(app)
 
 with app.app_context():
     db.init_db()
+
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15MB, matches the frontend's stated limit
 
 
 def login_required(view_func):
@@ -102,6 +113,12 @@ def chat():
 def legal_chat():
     data = request.get_json(silent=True) or {}
     message = (data.get("message") or "").strip()
+    # Optional — set when this turn is attached to a file uploaded via
+    # /api/analyze-document just before this call.
+    file_url = data.get("file_url")
+    file_name = data.get("file_name")
+    file_type = data.get("file_type")
+    file_public_id = data.get("file_public_id")
 
     if not message:
         return jsonify({"error": "Message is required."}), 400
@@ -124,8 +141,16 @@ def legal_chat():
         for m in prior_messages
     ]
 
-    # Persist the user's message
-    db.save_chat_message(case_id=case["id"], role="user", content=message)
+    # Persist the user's message, with the Cloudinary link if one was attached
+    db.save_chat_message(
+        case_id=case["id"],
+        role="user",
+        content=message,
+        file_url=file_url,
+        file_name=file_name,
+        file_type=file_type,
+        file_public_id=file_public_id,
+    )
 
     try:
         result = get_legal_ai_reply(history, message)
@@ -169,11 +194,35 @@ def analyze_document():
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid base64 file data."}), 400
 
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        return jsonify({"error": "File exceeds the 15MB limit."}), 400
+
+    # 1. Ask Gemini to read and explain the document
     try:
         result = analyze_legal_document(file_bytes, mime_type=mime_type, file_name=file_name)
     except Exception:
         app.logger.exception("Document analysis failed")
         return jsonify({"error": "Failed to analyze document."}), 502
+
+    # 2. Upload the original file to Cloudinary — resource_type="auto" handles
+    # both PDFs and images. Neon only ever stores the URL this returns.
+    try:
+        upload_result = cloudinary.uploader.upload(
+            file_bytes,
+            resource_type="auto",
+            folder="nyaysetu/case-documents",
+            filename=file_name or None,
+            use_filename=bool(file_name),
+            unique_filename=True,
+        )
+    except Exception:
+        app.logger.exception("Cloudinary upload failed")
+        return jsonify({"error": "Failed to store the uploaded file."}), 502
+
+    result["file_url"] = upload_result.get("secure_url")
+    result["file_name"] = file_name
+    result["file_type"] = mime_type
+    result["file_public_id"] = upload_result.get("public_id")
 
     return jsonify(result)
 

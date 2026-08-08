@@ -199,6 +199,11 @@
             padding: 2px 0;
         }
 
+        .bubble.file-link a {
+            color: var(--dm-coral);
+            text-decoration: underline;
+        }
+
         .typing-dots {
             display: inline-flex;
             gap: 4px;
@@ -223,8 +228,16 @@
         }
 
         @keyframes blink {
-            0%, 80%, 100% { opacity: .25; }
-            40% { opacity: 1; }
+
+            0%,
+            80%,
+            100% {
+                opacity: .25;
+            }
+
+            40% {
+                opacity: 1;
+            }
         }
 
         /* ===== Structured Dynamic Cards ===== */
@@ -313,7 +326,7 @@
             transition: color 0.15s;
         }
 
-        .checklist-checkbox:checked + .checklist-text {
+        .checklist-checkbox:checked+.checklist-text {
             text-decoration: line-through;
             color: var(--dm-on-dark-soft);
         }
@@ -360,7 +373,8 @@
         .risk-bar-fill {
             height: 100%;
             border-radius: var(--r-full);
-            width: 0%; /* Animated dynamically */
+            width: 0%;
+            /* Animated dynamically */
             transition: width 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
@@ -567,8 +581,8 @@
             <div class="chat-input-dock">
                 <div class="console-input-row">
                     <button class="attach-btn" id="attachBtn" type="button" aria-label="Attach a file">📎</button>
-                    <!-- Strict PDF acceptance filter applied -->
-                    <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+                    <!-- Accepts PDFs and images — both get uploaded to Cloudinary -->
+                    <input type="file" id="fileInput" accept="application/pdf,.pdf,image/*" hidden>
                     <input type="text" id="chatInput" placeholder="Type your reply…" autocomplete="off">
                     <button class="send-btn" id="sendBtn" aria-label="Send message">➤</button>
                 </div>
@@ -583,18 +597,12 @@
         // Full-screen continuation of the NyaySetu intake chat. If the user typed
         // their first message on the landing page, it's handed off here via
         // sessionStorage (see index.html) and auto-sent on load.
+        //
+        // chatHistory is kept client-side only for the UI's own bookkeeping (e.g.
+        // numbering risk-bar element ids) — the server rebuilds the real Gemini
+        // history from Postgres on every call, it does not trust this array.
         // ==========================================================================
         let chatHistory = []; // [{ role: 'user'|'model', content }]
-
-        async function getAIResponse(message) {
-            const res = await fetch('/api/legal-chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message, history: chatHistory })
-            });
-            if (!res.ok) throw new Error('Request failed: ' + res.status);
-            return await res.json();
-        }
 
         const chatLog = document.getElementById('chatLog');
         const chatInput = document.getElementById('chatInput');
@@ -611,9 +619,10 @@
         function renderAttachmentTray() {
             attachmentTray.innerHTML = '';
             pendingFiles.forEach((file, i) => {
+                const isImage = file.type.startsWith('image/');
                 const chip = document.createElement('div');
                 chip.className = 'attachment-chip';
-                chip.innerHTML = '<span>📄</span><span class="file-name"></span><span class="remove-file" role="button" aria-label="Remove file">✕</span>';
+                chip.innerHTML = `<span>${isImage ? '🖼️' : '📄'}</span><span class="file-name"></span><span class="remove-file" role="button" aria-label="Remove file">✕</span>`;
                 chip.querySelector('.file-name').textContent = file.name;
                 chip.querySelector('.remove-file').addEventListener('click', () => {
                     pendingFiles.splice(i, 1);
@@ -625,15 +634,16 @@
         }
 
         attachBtn.addEventListener('click', () => fileInput.click());
-        
+
         fileInput.addEventListener('change', () => {
             const file = fileInput.files[0];
             fileInput.value = '';
             if (!file) return;
 
             const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-            if (!isPdf) {
-                alert("Please attach a PDF file.");
+            const isImage = file.type.startsWith("image/");
+            if (!isPdf && !isImage) {
+                alert("Please attach a PDF or an image file.");
                 return;
             }
 
@@ -659,142 +669,211 @@
             return div;
         }
 
-        async function sendToAI(text) {
+        function addFileLinkBubble(label, url) {
+            const div = document.createElement('div');
+            div.className = 'bubble user file-link';
+            const a = document.createElement('a');
+            a.href = url;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = label;
+            div.appendChild(a);
+            chatLog.appendChild(div);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        // Uploads + analyzes one attachment via /api/analyze-document.
+        // Returns the parsed response (explanation, trust_score, trust_reasons,
+        // file_url, file_name, file_type, file_public_id) or throws.
+        async function processAttachment(file) {
+            const base64 = await fileToBase64(file);
+            const res = await fetch("/api/analyze-document", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    file_name: file.name,
+                    mime_type: file.type || "application/pdf",
+                    file_base64: base64,
+                }),
+            });
+            if (!res.ok) {
+                throw new Error(`Could not process the attachment "${file.name}". Please ensure it is a valid file under 15MB.`);
+            }
+            return await res.json();
+        }
+
+        // Renders the four-section structured answer card (risk meter, summary,
+        // next-steps checklist, evidence checklist, things to keep in mind).
+        // Falls back to a plain bubble if the reply isn't in the expected shape.
+        function renderStructuredAnswer(result, historyIndex) {
+            const rawText = result.reply || '';
+            const sections = rawText.split(/### \d+\.\s+/);
+
+            if (sections.length < 5) {
+                addBubble(result.reply, "ai");
+                return;
+            }
+
+            const summaryText = sections[1].replace("Summary of Your Situation", "").trim();
+            const nextStepsText = sections[2].replace("Actionable Next Steps", "").trim();
+            const haveEnsureText = sections[3].replace("What You Must Have & Ensure", "").trim();
+            const keepInMindText = sections[4].replace("Important Things to Keep in Mind", "").trim();
+
+            const strength = result.strength || 40;
+            const riskPercent = 100 - strength;
+
+            let riskLabel = "Low Risk";
+            let riskColor = "#0a7d5c"; // Green
+            if (riskPercent >= 70) {
+                riskLabel = "High Risk ⚠️";
+                riskColor = "#b30000"; // Red
+            } else if (riskPercent >= 40) {
+                riskLabel = "Moderate Risk";
+                riskColor = "#c98a1e"; // Amber
+            }
+
+            const card = document.createElement("div");
+            card.className = "structured-card";
+
+            card.innerHTML += `
+                <div class="risk-section">
+                    <div class="risk-header">
+                        <span class="risk-label">Situation Risk Assessment</span>
+                        <span class="risk-value" style="color: ${riskColor};">${riskLabel} (${riskPercent}%)</span>
+                    </div>
+                    <div class="risk-bar-track">
+                        <div class="risk-bar-fill" id="riskFill-${historyIndex}" style="background: ${riskColor};"></div>
+                    </div>
+                </div>`;
+
+            card.innerHTML += `
+                <div class="sc-section" style="margin-top: 10px;">
+                    <div class="sc-title">🛡️ Summary of Your Situation</div>
+                    <div class="sc-text">${summaryText}</div>
+                </div>`;
+
+            const stepsList = nextStepsText.split(/\n-\s+/).filter(Boolean);
+            let stepsHTML = `<div class="sc-section"><div class="sc-title">📋 Actionable Next Steps</div>`;
+            stepsList.forEach((step, idx) => {
+                const cleanedStep = step.replace(/^-/, "").trim();
+                if (cleanedStep) {
+                    stepsHTML += `
+                        <div class="checklist-item">
+                            <input type="checkbox" class="checklist-checkbox" id="step-${historyIndex}-${idx}">
+                            <label class="checklist-text" for="step-${historyIndex}-${idx}">${cleanedStep}</label>
+                        </div>`;
+                }
+            });
+            stepsHTML += `</div>`;
+            card.innerHTML += stepsHTML;
+
+            const evidenceList = haveEnsureText.split(/\n-\s+/).filter(Boolean);
+            let evidenceHTML = `<div class="sc-section"><div class="sc-title">📂 What You Must Have & Ensure</div>`;
+            evidenceList.forEach((item, idx) => {
+                const cleanedItem = item.replace(/^-/, "").trim();
+                if (cleanedItem) {
+                    evidenceHTML += `
+                        <div class="checklist-item">
+                            <input type="checkbox" class="checklist-checkbox" id="evidence-${historyIndex}-${idx}">
+                            <label class="checklist-text" for="evidence-${historyIndex}-${idx}">${cleanedItem}</label>
+                        </div>`;
+                }
+            });
+            evidenceHTML += `</div>`;
+            card.innerHTML += evidenceHTML;
+
+            card.innerHTML += `
+                <div class="sc-section">
+                    <div class="sc-title">💡 Important Things to Keep in Mind</div>
+                    <div class="sc-text">${keepInMindText.replace(/\n/g, "<br>")}</div>
+                </div>`;
+
+            chatLog.appendChild(card);
+
+            setTimeout(() => {
+                const fillBar = document.getElementById(`riskFill-${historyIndex}`);
+                if (fillBar) fillBar.style.width = riskPercent + "%";
+            }, 100);
+
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        function updateResultCard(result) {
+            if (!result.category) return;
+            resultBadge.textContent = result.category;
+            let line = result.summary || '';
+            if (result.strength !== null && result.strength !== undefined) {
+                line += (line ? ' ' : '') + `(Case strength: ${result.strength}/100)`;
+            }
+            resultText.textContent = line;
+            resultCard.classList.add('show');
+        }
+
+        // Single send path used both for the bootstrapped first message and
+        // every subsequent turn.
+        async function handleSend(prefill) {
+            let text = (prefill !== undefined ? prefill : chatInput.value).trim();
+            const filesToSend = pendingFiles;
+            if (!text && filesToSend.length === 0) return;
+
+            if (!text && filesToSend.length > 0) {
+                text = "Please analyze this attached document and guide me on what to do next based on its terms.";
+            }
+
+            addBubble(text, "user");
+
+            pendingFiles = [];
+            renderAttachmentTray();
+            chatInput.value = "";
             sendBtn.disabled = true;
-            const typing = document.createElement('div');
-            typing.className = 'typing-dots';
-            typing.innerHTML = '<span></span><span></span><span></span>';
+
+            const typing = document.createElement("div");
+            typing.className = "typing-dots";
+            typing.innerHTML = "<span></span><span></span><span></span>";
             chatLog.appendChild(typing);
             chatLog.scrollTop = chatLog.scrollHeight;
 
             try {
-                // If a file is attached to the chat, extract its details synchronously in the background
-                if (pendingFiles.length > 0) {
-                    const attachedFile = pendingFiles[0];
-                    const base64 = await fileToBase64(attachedFile);
-                    
-                    const extractRes = await fetch("/api/analyze-document", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            file_name: attachedFile.name,
-                            mime_type: attachedFile.type || "application/pdf",
-                            file_base64: base64,
-                        }),
-                    });
-                    
-                    if (extractRes.ok) {
-                        const docData = await extractRes.json();
-                        // Append the document text context secretly into the AI text prompt
+                // Uploads to Cloudinary + Gemini-analyzes the attachment, if any.
+                let fileMeta = null;
+                if (filesToSend.length > 0) {
+                    const attachedFile = filesToSend[0];
+                    try {
+                        const docData = await processAttachment(attachedFile);
+                        fileMeta = {
+                            file_url: docData.file_url || null,
+                            file_name: docData.file_name || attachedFile.name,
+                            file_type: docData.file_type || attachedFile.type,
+                            file_public_id: docData.file_public_id || null,
+                        };
+                        if (fileMeta.file_url) {
+                            addFileLinkBubble("📎 " + fileMeta.file_name, fileMeta.file_url);
+                        } else {
+                            addBubble("📎 " + attachedFile.name, "user");
+                        }
                         text += `\n\n[System Attached Document Context: "${attachedFile.name}" Summary: "${docData.explanation}"]`;
-                    } else {
+                    } catch (attachErr) {
                         typing.remove();
-                        addBubble(`⚠️ Could not process the attachment "${attachedFile.name}". Please ensure it is a valid, unencrypted PDF under 15MB.`, "ai");
+                        addBubble(`⚠️ ${attachErr.message}`, "ai");
                         sendBtn.disabled = false;
                         return;
                     }
                 }
 
-                const result = await getAIResponse(text);
+                const res = await fetch('/api/legal-chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: text,
+                        ...(fileMeta || {}),
+                    })
+                });
+                if (!res.ok) throw new Error('Request failed: ' + res.status);
+                const result = await res.json();
                 typing.remove();
 
                 if (result.type === "answer") {
-                    const rawText = result.reply;
-                    const sections = rawText.split(/### \d+\.\s+/);
-
-                    if (sections.length >= 5) {
-                        const summaryText = sections[1].replace("Summary of Your Situation", "").trim();
-                        const nextStepsText = sections[2].replace("Actionable Next Steps", "").trim();
-                        const haveEnsureText = sections[3].replace("What You Must Have & Ensure", "").trim();
-                        const keepInMindText = sections[4].replace("Important Things to Keep in Mind", "").trim();
-
-                        // Calculate Risk (100 - Strength)
-                        const strength = result.strength || 40;
-                        const riskPercent = 100 - strength;
-                        
-                        let riskLabel = "Low Risk";
-                        let riskColor = "#0a7d5c"; // Green
-                        
-                        if (riskPercent >= 70) {
-                            riskLabel = "High Risk ⚠️";
-                            riskColor = "#b30000"; // Red
-                        } else if (riskPercent >= 40) {
-                            riskLabel = "Moderate Risk";
-                            riskColor = "#c98a1e"; // Amber
-                        }
-
-                        const card = document.createElement("div");
-                        card.className = "structured-card";
-
-                        // 1. Situation Risk Meter
-                        card.innerHTML += `
-                            <div class="risk-section">
-                                <div class="risk-header">
-                                    <span class="risk-label">Situation Risk Assessment</span>
-                                    <span class="risk-value" style="color: ${riskColor};">${riskLabel} (${riskPercent}%)</span>
-                                </div>
-                                <div class="risk-bar-track">
-                                    <div class="risk-bar-fill" id="riskFill-${chatHistory.length}" style="background: ${riskColor};"></div>
-                                </div>
-                            </div>`;
-
-                        // 2. Summary of Situation
-                        card.innerHTML += `
-                            <div class="sc-section" style="margin-top: 10px;">
-                                <div class="sc-title">🛡️ Summary of Your Situation</div>
-                                <div class="sc-text">${summaryText}</div>
-                            </div>`;
-
-                        // 3. Next Steps Checklist
-                        const stepsList = nextStepsText.split(/\n-\s+/).filter(Boolean);
-                        let stepsHTML = `<div class="sc-section"><div class="sc-title">📋 Actionable Next Steps</div>`;
-                        stepsList.forEach((step, idx) => {
-                            const cleanedStep = step.replace(/^-/, "").trim();
-                            if (cleanedStep) {
-                                stepsHTML += `
-                                    <div class="checklist-item">
-                                        <input type="checkbox" class="checklist-checkbox" id="step-${idx}">
-                                        <label class="checklist-text" for="step-${idx}">${cleanedStep}</label>
-                                    </div>`;
-                            }
-                        });
-                        stepsHTML += `</div>`;
-                        card.innerHTML += stepsHTML;
-
-                        // 4. Evidence Checklist
-                        const evidenceList = haveEnsureText.split(/\n-\s+/).filter(Boolean);
-                        let evidenceHTML = `<div class="sc-section"><div class="sc-title">📂 What You Must Have & Ensure</div>`;
-                        evidenceList.forEach((item, idx) => {
-                            const cleanedItem = item.replace(/^-/, "").trim();
-                            if (cleanedItem) {
-                                evidenceHTML += `
-                                    <div class="checklist-item">
-                                        <input type="checkbox" class="checklist-checkbox" id="evidence-${idx}">
-                                        <label class="checklist-text" for="evidence-${idx}">${cleanedItem}</label>
-                                    </div>`;
-                            }
-                        });
-                        evidenceHTML += `</div>`;
-                        card.innerHTML += evidenceHTML;
-
-                        // 5. Things to Keep in Mind
-                        card.innerHTML += `
-                            <div class="sc-section">
-                                <div class="sc-title">💡 Important Things to Keep in Mind</div>
-                                <div class="sc-text">${keepInMindText.replace(/\n/g, "<br>")}</div>
-                            </div>`;
-
-                        chatLog.appendChild(card);
-                        
-                        setTimeout(() => {
-                            const fillBar = document.getElementById(`riskFill-${chatHistory.length}`);
-                            if (fillBar) fillBar.style.width = riskPercent + "%";
-                        }, 100);
-
-                        chatLog.scrollTop = chatLog.scrollHeight;
-                    } else {
-                        addBubble(result.reply, "ai");
-                    }
+                    renderStructuredAnswer(result, chatHistory.length);
                 } else {
                     addBubble(result.reply, "ai");
                 }
@@ -802,15 +881,7 @@
                 if (text) chatHistory.push({ role: 'user', content: text });
                 chatHistory.push({ role: 'model', content: result.reply });
 
-                if (result.category) {
-                    resultBadge.textContent = result.category;
-                    let line = result.summary || '';
-                    if (result.strength !== null && result.strength !== undefined) {
-                        line += (line ? ' ' : '') + `(Case strength: ${result.strength}/100)`;
-                    }
-                    resultText.textContent = line;
-                    resultCard.classList.add('show');
-                }
+                updateResultCard(result);
             } catch (err) {
                 typing.remove();
                 addBubble('Something went wrong reaching the AI: ' + err.message, 'ai');
@@ -819,195 +890,7 @@
             }
         }
 
-        async function handleSend(prefill) {
-        let text = (prefill !== undefined ? prefill : chatInput.value).trim();
-        if (!text && pendingFiles.length === 0) return;
-
-        // SAFEGUARD 1: If user attached a file but typed nothing, set a default prompt
-        if (!text && pendingFiles.length > 0) {
-          text = "Please analyze this attached document and guide me on what to do next based on its terms.";
-        }
-
-        // Display user messages in bubble
-        addBubble(text, "user");
-        pendingFiles.forEach((f) => addBubble("📎 " + f.name, "user"));
-        
-        const filesToSend = pendingFiles;
-        pendingFiles = [];
-        renderAttachmentTray();
-        chatInput.value = "";
-        sendBtn.disabled = true;
-
-        const typing = document.createElement("div");
-        typing.className = "typing-dots";
-        typing.innerHTML = "<span></span><span></span><span></span>";
-        chatLog.appendChild(typing);
-        chatLog.scrollTop = chatLog.scrollHeight;
-
-        try {
-          // If a file was attached, process it in the background
-          if (filesToSend.length > 0) {
-            const attachedFile = filesToSend[0];
-            const base64 = await fileToBase64(attachedFile);
-            
-            // Extract the document meaning
-            const extractRes = await fetch("/api/analyze-document", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                file_name: attachedFile.name,
-                mime_type: attachedFile.type || "application/pdf",
-                file_base64: base64,
-              }),
-            });
-            
-            if (extractRes.ok) {
-              const docData = await extractRes.json();
-              // Append document context secretly to the message payload
-              text += `\n\n[System Attached Document Context: "${attachedFile.name}" Summary: "${docData.explanation}"]`;
-            } else {
-              // SAFEGUARD 2: Alert user if background document analysis fails
-              typing.remove();
-              addBubble(`⚠️ Could not process the attachment "${attachedFile.name}". Please ensure it is a valid, unencrypted PDF under 15MB and try again.`, "ai");
-              sendBtn.disabled = false;
-              return;
-            }
-          }
-
-          // Call standard legal chat API
-          const result = await getAIResponse(text);
-          typing.remove();
-
-          if (result.type === "answer") {
-            const rawText = result.reply;
-            const sections = rawText.split(/### \d+\.\s+/);
-
-            if (sections.length >= 5) {
-              const summaryText = sections[1].replace("Summary of Your Situation", "").trim();
-              const nextStepsText = sections[2].replace("Actionable Next Steps", "").trim();
-              const haveEnsureText = sections[3].replace("What You Must Have & Ensure", "").trim();
-              const keepInMindText = sections[4].replace("Important Things to Keep in Mind", "").trim();
-
-              // Calculate Situation Risk from Case Strength (100 - Strength)
-              const strength = result.strength || 40;
-              const riskPercent = 100 - strength;
-              
-              let riskLabel = "Low Risk";
-              let riskColor = "#0a7d5c"; // Green
-              
-              if (riskPercent >= 70) {
-                riskLabel = "High Risk ⚠️";
-                riskColor = "#b30000"; // Red
-              } else if (riskPercent >= 40) {
-                riskLabel = "Moderate Risk";
-                riskColor = "#c98a1e"; // Amber
-              }
-
-              const card = document.createElement("div");
-              card.className = "structured-card";
-
-              // 1. Render Dynamic Situation Risk Meter
-              card.innerHTML += `
-                <div class="risk-section">
-                  <div class="risk-header">
-                    <span class="risk-label">Situation Risk Assessment</span>
-                    <span class="risk-value" style="color: ${riskColor};">${riskLabel} (${riskPercent}%)</span>
-                  </div>
-                  <div class="risk-bar-track">
-                    <div class="risk-bar-fill" id="riskFill-${chatHistory.length}" style="background: ${riskColor};"></div>
-                  </div>
-                </div>`;
-
-              // 2. Render Summary of Situation
-              card.innerHTML += `
-                <div class="sc-section" style="margin-top: 10px;">
-                  <div class="sc-title">🛡️ Summary of Your Situation</div>
-                  <div class="sc-text">${summaryText}</div>
-                </div>`;
-
-              // 3. Render Actionable Next Steps Checklist
-              const stepsList = nextStepsText.split(/\n-\s+/).filter(Boolean);
-              let stepsHTML = `<div class="sc-section"><div class="sc-title">📋 Actionable Next Steps</div>`;
-              stepsList.forEach((step, idx) => {
-                const cleanedStep = step.replace(/^-/, "").trim();
-                if (cleanedStep) {
-                  stepsHTML += `
-                    <div class="checklist-item">
-                      <input type="checkbox" class="checklist-checkbox" id="step-${idx}">
-                      <label class="checklist-text" for="step-${idx}">${cleanedStep}</label>
-                    </div>`;
-                }
-              });
-              stepsHTML += `</div>`;
-              card.innerHTML += stepsHTML;
-
-              // 4. Render What You Must Have & Ensure Checklist
-              const evidenceList = haveEnsureText.split(/\n-\s+/).filter(Boolean);
-              let evidenceHTML = `<div class="sc-section"><div class="sc-title">📂 What You Must Have & Ensure</div>`;
-              evidenceList.forEach((item, idx) => {
-                const cleanedItem = item.replace(/^-/, "").trim();
-                if (cleanedItem) {
-                  evidenceHTML += `
-                    <div class="checklist-item">
-                      <input type="checkbox" class="checklist-checkbox" id="evidence-${idx}">
-                      <label class="checklist-text" for="evidence-${idx}">${cleanedItem}</label>
-                    </div>`;
-                }
-              });
-              evidenceHTML += `</div>`;
-              card.innerHTML += evidenceHTML;
-
-              // 5. Render Important Things to Keep in Mind
-              card.innerHTML += `
-                <div class="sc-section">
-                  <div class="sc-title">💡 Important Things to Keep in Mind</div>
-                  <div class="sc-text">${keepInMindText.replace(/\n/g, "<br>")}</div>
-                </div>`;
-
-              chatLog.appendChild(card);
-              
-              // Animate the risk bar fill after rendering
-              setTimeout(() => {
-                const fillBar = document.getElementById(`riskFill-${chatHistory.length}`);
-                if (fillBar) fillBar.style.width = riskPercent + "%";
-              }, 100);
-
-              chatLog.scrollTop = chatLog.scrollHeight;
-            } else {
-              // Fallback
-              addBubble(result.reply, "ai");
-            }
-          } else {
-            // Conversational turn
-            addBubble(result.reply, "ai");
-          }
-
-          // Keep history in sync
-          if (text) chatHistory.push({ role: "user", content: text });
-          chatHistory.push({ role: "model", content: result.reply });
-
-          if (result.category) {
-            resultBadge.textContent = result.category;
-            let line = result.summary || "";
-            if (result.strength !== null && result.strength !== undefined) {
-              line += (line ? " " : "") + `(Case strength: ${result.strength}/100)`;
-            }
-            resultText.textContent = line;
-            resultCard.classList.add("show");
-          }
-        } catch (err) {
-          typing.remove();
-          addBubble(
-            "Something went wrong reaching the AI: " + err.message,
-            "ai",
-          );
-        } finally {
-          sendBtn.disabled = false;
-        }
-      }
-
-
-        sendBtn.addEventListener('click', handleSend);
+        sendBtn.addEventListener('click', () => handleSend());
         chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSend(); });
 
         // ---- bootstrap: pick up the handed-off first message, or show a welcome ----
@@ -1015,13 +898,11 @@
             let initialMessage = null;
             try { initialMessage = sessionStorage.getItem('nyaysetu_initial_message'); } catch (e) { }
 
+            addBubble('Session started', 'system');
             if (initialMessage) {
                 try { sessionStorage.removeItem('nyaysetu_initial_message'); } catch (e) { }
-                addBubble('Session started', 'system');
-                addBubble(initialMessage, 'user');
-                sendToAI(initialMessage);
+                handleSend(initialMessage);
             } else {
-                addBubble('Session started', 'system');
                 addBubble("Hi — I'm here to help you understand your legal situation. Go ahead and describe what happened, in your own words.", 'ai');
             }
             chatInput.focus();
