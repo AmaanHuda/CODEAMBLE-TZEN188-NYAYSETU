@@ -500,6 +500,71 @@
         background: rgba(255, 255, 255, 0.1);
       }
 
+      /* ===== speech: mic (STT) + language select ===== */
+      .mic-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        color: #fff;
+        font-size: 17px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s;
+      }
+
+      .mic-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .mic-btn.recording {
+        background: var(--dm-coral);
+        animation: micPulse 1.2s infinite ease-in-out;
+      }
+
+      @keyframes micPulse {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(204, 120, 92, 0.55);
+        }
+
+        50% {
+          box-shadow: 0 0 0 9px rgba(204, 120, 92, 0);
+        }
+      }
+
+      .speech-controls-row {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+        padding: 0 8px 8px;
+      }
+
+      .speech-controls-row .mic-hint {
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--dm-on-dark-soft);
+      }
+
+      .lang-select {
+        background: var(--dm-surface-dark-soft);
+        border: 1px solid var(--dm-hairline-dark);
+        color: #fff;
+        font-family: var(--font-body);
+        font-size: 12.5px;
+        padding: 6px 10px;
+        border-radius: var(--r-full);
+      }
+
+      .lang-select:focus {
+        outline: none;
+        border-color: var(--dm-coral);
+      }
+
       .console-input-row input {
         flex: 1;
         background: none;
@@ -912,6 +977,26 @@
           <div class="attachment-tray" id="attachmentTray"></div>
 
           <div class="chat-input-dock">
+            <div class="speech-controls-row">
+              <span class="mic-hint">Speak in</span>
+              <select
+                id="speechLangSelect"
+                class="lang-select"
+                aria-label="Speech language"
+              >
+                <option value="en">English</option>
+                <option value="hi">हिंदी Hindi</option>
+                <option value="mr">मराठी Marathi</option>
+                <option value="ta">தமிழ் Tamil</option>
+                <option value="te">తెలుగు Telugu</option>
+                <option value="bn">বাংলা Bengali</option>
+                <option value="gu">ગુજરાતી Gujarati</option>
+                <option value="kn">ಕನ್ನಡ Kannada</option>
+                <option value="ml">മലയാളം Malayalam</option>
+                <option value="pa">ਪੰਜਾਬੀ Punjabi</option>
+                <option value="ur">اردو Urdu</option>
+              </select>
+            </div>
             <div class="console-input-row">
               <button
                 class="attach-btn"
@@ -928,6 +1013,14 @@
                 accept="application/pdf,.pdf,image/*"
                 hidden
               />
+              <button
+                class="mic-btn"
+                id="micBtn"
+                type="button"
+                aria-label="Speak your message"
+              >
+                🎤
+              </button>
               <input
                 type="text"
                 id="chatInput"
@@ -1298,6 +1391,174 @@
         });
       }
 
+      // ==========================================================================
+      // Speech: mic input (speech-to-text).
+      //
+      // Browser-native Web Speech API (SpeechRecognition) is the default —
+      // free, instant, zero server round trip. We fall back to the server
+      // (/api/speech-to-text in speech_service.py, which uses Gemini) only
+      // when the browser has no SpeechRecognition support at all (Safari/
+      // iOS, most in-app webviews), or the native recognizer refuses to
+      // start.
+      // ==========================================================================
+      const LANGUAGES = {
+        en: { bcp47: "en-IN", label: "English" },
+        hi: { bcp47: "hi-IN", label: "Hindi" },
+        mr: { bcp47: "mr-IN", label: "Marathi" },
+        ta: { bcp47: "ta-IN", label: "Tamil" },
+        te: { bcp47: "te-IN", label: "Telugu" },
+        bn: { bcp47: "bn-IN", label: "Bengali" },
+        gu: { bcp47: "gu-IN", label: "Gujarati" },
+        kn: { bcp47: "kn-IN", label: "Kannada" },
+        ml: { bcp47: "ml-IN", label: "Malayalam" },
+        pa: { bcp47: "pa-IN", label: "Punjabi" },
+        ur: { bcp47: "ur-IN", label: "Urdu" },
+      };
+
+      const speechLangSelect = document.getElementById("speechLangSelect");
+      const micBtn = document.getElementById("micBtn");
+
+      function currentLang() {
+        return speechLangSelect ? speechLangSelect.value : "en";
+      }
+
+      // ---- speech-to-text ----
+      const SpeechRecognitionImpl =
+        window.SpeechRecognition || window.webkitSpeechRecognition || null;
+
+      let recognizer = null;
+      let isRecording = false;
+      let mediaRecorder = null;
+      let recordedChunks = [];
+
+      function setMicRecording(on) {
+        isRecording = on;
+        micBtn.classList.toggle("recording", on);
+        micBtn.textContent = on ? "⏹️" : "🎤";
+      }
+
+      // Fallback path: record raw audio in the browser and let the server
+      // (Gemini, via speech_service.py) transcribe it. Used for browsers
+      // with no SpeechRecognition support, or if native recognition errors
+      // out immediately (e.g. blocked by browser policy).
+      async function startServerRecording() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          addBubble(
+            "⚠️ Voice input needs microphone access, which this browser/context doesn't support (try HTTPS or a different browser).",
+            "ai",
+          );
+          return;
+        }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          recordedChunks = [];
+          const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+            ? "audio/webm"
+            : "audio/ogg";
+          mediaRecorder = new MediaRecorder(stream, { mimeType });
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) recordedChunks.push(e.data);
+          };
+          mediaRecorder.onstop = async () => {
+            stream.getTracks().forEach((t) => t.stop());
+            setMicRecording(false);
+            if (recordedChunks.length === 0) return;
+            const blob = new Blob(recordedChunks, { type: mimeType });
+            const base64 = await fileToBase64(blob);
+            const prevPlaceholder = chatInput.placeholder;
+            chatInput.placeholder = "Transcribing…";
+            try {
+              const res = await fetch("/api/speech-to-text", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  audio_base64: base64,
+                  mime_type: mimeType,
+                  language: currentLang(),
+                }),
+              });
+              const data = await res.json();
+              if (data.text) {
+                chatInput.value = (chatInput.value + " " + data.text).trim();
+              } else if (data.error) {
+                addBubble("⚠️ " + data.error, "ai");
+              }
+            } catch (err) {
+              addBubble(
+                "⚠️ Could not transcribe audio: " + err.message,
+                "ai",
+              );
+            } finally {
+              chatInput.placeholder = prevPlaceholder;
+              chatInput.focus();
+            }
+          };
+          mediaRecorder.start();
+          setMicRecording(true);
+        } catch (err) {
+          addBubble(
+            "⚠️ Microphone access is needed for voice input: " +
+              err.message,
+            "ai",
+          );
+        }
+      }
+
+      function stopServerRecording() {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop();
+        }
+      }
+
+      function initBrowserRecognition() {
+        recognizer = new SpeechRecognitionImpl();
+        recognizer.continuous = false;
+        recognizer.interimResults = true;
+        recognizer.maxAlternatives = 1;
+
+        recognizer.onresult = (event) => {
+          let transcript = "";
+          for (let i = 0; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+          }
+          chatInput.value = transcript;
+        };
+        recognizer.onerror = () => {
+          setMicRecording(false);
+        };
+        recognizer.onend = () => {
+          setMicRecording(false);
+          chatInput.focus();
+        };
+      }
+
+      if (SpeechRecognitionImpl) {
+        initBrowserRecognition();
+      }
+
+      micBtn.addEventListener("click", () => {
+        if (isRecording) {
+          if (recognizer) recognizer.stop();
+          else stopServerRecording();
+          return;
+        }
+
+        if (SpeechRecognitionImpl) {
+          try {
+            recognizer.lang = LANGUAGES[currentLang()].bcp47;
+            recognizer.start();
+            setMicRecording(true);
+          } catch (err) {
+            // Native recognizer refused to start — fall back to server STT.
+            startServerRecording();
+          }
+        } else {
+          startServerRecording();
+        }
+      });
+
       function addBubble(text, cls) {
         const div = document.createElement("div");
         div.className = "bubble " + cls;
@@ -1531,6 +1792,11 @@
                   "ai",
                 );
                 text += `\n\n[System Attached Document Context: "${attachedFile.name}" Summary: "${docData.summary}"]`;
+                // Send the full structured breakdown along with this turn so
+                // the server can persist it against the message/case. Without
+                // this, the sidebar's content only ever existed in this
+                // browser tab and vanished on refresh or on a later visit.
+                fileMeta.document_analysis = docData;
               } else if (docData.status === "OUT_OF_CONTEXT") {
                 addBubble(
                   "This attachment doesn't look like a legal document, so I can't produce a structured breakdown of it — but go ahead and describe your situation and I'll help however I can.",
@@ -1609,9 +1875,23 @@
           addBubble("Session started", "system");
 
           let structuredCount = 0;
+          // Track the most recent document analysis across this case's
+          // history so the sidebar comes back exactly like it was before a
+          // refresh — even days later — instead of only existing for the
+          // browser tab that uploaded the file.
+          let lastDocAnalysis = null;
           history.forEach((m) => {
             if (m.file_url) {
               addFileLinkBubble("📎 " + (m.file_name || "attachment"), m.file_url);
+            }
+            // See app.py's resume_case(): each saved message that came with
+            // an analyzed attachment should carry that analyze_legal_
+            // document() payload back under `document_analysis` (or, for
+            // older/simpler schemas, the case row itself may carry only the
+            // single latest one under `caseInfo.document_analysis` — see the
+            // fallback below the loop).
+            if (m.document_analysis) {
+              lastDocAnalysis = m.document_analysis;
             }
             if (m.role === "user") {
               if (m.content) addBubble(m.content, "user");
@@ -1636,6 +1916,15 @@
               chatHistory.push({ role: "model", content: m.content });
             }
           });
+
+          // Rebuild the analysis sidebar so it's available again (as a
+          // toggle, not force-opened) — same behavior as right after the
+          // original upload, just reconstructed instead of live.
+          const resumedAnalysis =
+            lastDocAnalysis || (caseInfo && caseInfo.document_analysis);
+          if (resumedAnalysis) {
+            renderAnalysisPanel(resumedAnalysis);
+          }
 
           if (caseInfo && caseInfo.category) {
             updateResultCard({
