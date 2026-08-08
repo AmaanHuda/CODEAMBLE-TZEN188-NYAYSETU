@@ -67,6 +67,7 @@ def init_db():
                     category TEXT,
                     summary TEXT,
                     strength INTEGER,
+                    resolved BOOLEAN NOT NULL DEFAULT FALSE,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 );
@@ -97,6 +98,7 @@ def init_db():
             cur.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_name TEXT;")
             cur.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_type TEXT;")
             cur.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_public_id TEXT;")
+            cur.execute("ALTER TABLE cases ADD COLUMN IF NOT EXISTS resolved BOOLEAN NOT NULL DEFAULT FALSE;")
         conn.commit()
 
 
@@ -149,7 +151,7 @@ def create_case(user_id):
                 """
                 INSERT INTO cases (user_id)
                 VALUES (%s)
-                RETURNING id, user_id, category, summary, strength, created_at, updated_at;
+                RETURNING id, user_id, category, summary, strength, resolved, created_at, updated_at;
                 """,
                 (user_id,),
             )
@@ -164,7 +166,7 @@ def get_case(case_id, user_id=None):
             if user_id is not None:
                 cur.execute(
                     """
-                    SELECT id, user_id, category, summary, strength, created_at, updated_at
+                    SELECT id, user_id, category, summary, strength, resolved, created_at, updated_at
                     FROM cases WHERE id = %s AND user_id = %s;
                     """,
                     (case_id, user_id),
@@ -172,7 +174,7 @@ def get_case(case_id, user_id=None):
             else:
                 cur.execute(
                     """
-                    SELECT id, user_id, category, summary, strength, created_at, updated_at
+                    SELECT id, user_id, category, summary, strength, resolved, created_at, updated_at
                     FROM cases WHERE id = %s;
                     """,
                     (case_id,),
@@ -207,18 +209,53 @@ def update_case_meta(case_id, category=None, summary=None, strength=None):
         conn.commit()
 
 
+def mark_case_resolved(case_id):
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                UPDATE cases SET resolved = TRUE, updated_at = now()
+                WHERE id = %s
+                RETURNING id, user_id, category, summary, strength, resolved, created_at, updated_at;
+                """,
+                (case_id,),
+            )
+            case = cur.fetchone()
+        conn.commit()
+        return dict(case) if case else None
+
+
 def list_cases_for_user(user_id):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, user_id, category, summary, strength, created_at, updated_at
+                SELECT id, user_id, category, summary, strength, resolved, created_at, updated_at
                 FROM cases WHERE user_id = %s ORDER BY updated_at DESC;
                 """,
                 (user_id,),
             )
             cases = cur.fetchall()
         return [dict(c) for c in cases]
+
+
+# get_user_cases is what app.py's dashboard route calls — same query as
+# list_cases_for_user, plus a human-friendly "updated_at_display" and a
+# 0-3 "step" for the dashboard's progress timeline, computed here so
+# app.py doesn't have to know about the raw timestamps.
+def get_user_cases(user_id):
+    cases = list_cases_for_user(user_id)
+    for c in cases:
+        c["updated_at_display"] = _time_ago(c["updated_at"])
+        if c["resolved"]:
+            c["step"] = 3
+        elif c.get("summary"):
+            c["step"] = 2
+        elif c.get("category"):
+            c["step"] = 1
+        else:
+            c["step"] = 0
+    return cases
 
 
 # --------------------------------------------------------------------------
@@ -258,3 +295,83 @@ def get_case_messages(case_id):
             )
             msgs = cur.fetchall()
         return [dict(m) for m in msgs]
+
+
+# --------------------------------------------------------------------------
+# Dashboard: documents + activity feed
+# --------------------------------------------------------------------------
+
+def get_user_documents(user_id):
+    """Every chat message across the user's cases that has a file attached,
+    newest first — powers the 'Recent documents' sidebar panel."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT m.file_name, m.file_url, m.file_public_id, m.case_id, m.created_at
+                FROM chat_messages m
+                JOIN cases c ON c.id = m.case_id
+                WHERE c.user_id = %s AND m.file_url IS NOT NULL
+                ORDER BY m.created_at DESC;
+                """,
+                (user_id,),
+            )
+            rows = cur.fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["uploaded_at_display"] = _time_ago(d.pop("created_at"))
+            d["size_display"] = ""  # Cloudinary's byte size isn't stored today
+            out.append(d)
+        return out
+
+
+def get_recent_activity(user_id, limit=8):
+    """Newest chat messages across all of the user's cases, formatted for
+    the dashboard's activity feed."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT m.role, m.file_name, m.file_url, m.created_at
+                FROM chat_messages m
+                JOIN cases c ON c.id = m.case_id
+                WHERE c.user_id = %s
+                ORDER BY m.created_at DESC
+                LIMIT %s;
+                """,
+                (user_id, limit),
+            )
+            rows = cur.fetchall()
+
+    out = []
+    for r in rows:
+        if r["file_url"]:
+            icon, text = "📄", f"You uploaded {r['file_name'] or 'a document'}"
+        elif r["role"] == "assistant":
+            icon, text = "💬", "Received guidance on your case"
+        else:
+            icon, text = "📝", "You sent a message"
+        out.append({"icon": icon, "text": text, "time": _time_ago(r["created_at"])})
+    return out
+
+
+def _time_ago(dt):
+    """'2 days ago' / 'Today' style label for the dashboard."""
+    from datetime import datetime, timezone
+
+    if not dt:
+        return ""
+    now = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    delta = now - dt
+    days = delta.days
+    if days <= 0:
+        return "Today"
+    if days == 1:
+        return "Yesterday"
+    if days < 7:
+        return f"{days} days ago"
+    weeks = days // 7
+    return f"{weeks} week{'s' if weeks > 1 else ''} ago"

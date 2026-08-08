@@ -53,6 +53,16 @@ def home():
     return render_template("main.html")
 
 
+# NOTE: this used to be named `home()` too, which silently overwrote the
+# "/" route in Flask's url map (duplicate endpoint name -> AssertionError
+# on startup, or the wrong view winning depending on import order). Renamed.
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    user = db.get_user_by_id(session["user_id"])
+    return render_template("dashboard.html", user=user)
+
+
 @app.route("/login", methods=["GET"])
 def login():
     return render_template("login.html")
@@ -70,7 +80,7 @@ def login_submit():
 
     session["user_id"] = user["id"]
     next_url = request.args.get("next")
-    return redirect(next_url or url_for("chat"))
+    return redirect(next_url or url_for("dashboard"))
 
 
 @app.route("/signup", methods=["POST"])
@@ -89,7 +99,7 @@ def signup():
 
     user = db.create_user(name, email, generate_password_hash(password))
     session["user_id"] = user["id"]
-    return redirect(url_for("chat"))
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/logout")
@@ -104,7 +114,192 @@ def chat():
     # Starting a fresh issue should start a fresh case, not keep appending
     # to whatever case was active before.
     session.pop("active_case_id", None)
-    return render_template("new_issue.html")
+    return render_template("new_issue.html", pending_upload=_pop_pending_upload())
+
+
+@app.route("/case/<int:case_id>")
+@login_required
+def resume_case(case_id):
+    """Clicking a row in the dashboard's case list (= chat history) lands
+    here. We verify ownership, make this the active case for the session,
+    and hand the chat template the full message history so it can render
+    the thread instead of starting blank."""
+    user_id = session["user_id"]
+    case = db.get_case(case_id, user_id=user_id)
+    if not case:
+        flash("That case couldn't be found.")
+        return redirect(url_for("dashboard"))
+
+    session["active_case_id"] = case["id"]
+    history = db.get_case_messages(case["id"])
+    return render_template(
+        "new_issue.html",
+        case=case,
+        chat_history=history,
+        pending_upload=_pop_pending_upload(),
+    )
+
+
+def _pop_pending_upload():
+    """A doc uploaded from the dashboard sidebar is stashed in the session
+    for exactly one request, then handed to new_issue.html so its JS can
+    render the attachment bubble and pre-fill the file_url/file_name/etc.
+    fields that /api/legal-chat expects on the next message. Template side
+    (new_issue.html) needs something like:
+
+        {% if pending_upload %}
+        <script>
+          window.__PENDING_UPLOAD__ = {{ pending_upload | tojson }};
+        </script>
+        {% endif %}
+
+    and JS that reads window.__PENDING_UPLOAD__ on load to show the
+    attached-file chip above the composer.
+    """
+    return session.pop("pending_upload", None)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard data API — replaces the SAMPLE_* constants in dashboard.html
+# ---------------------------------------------------------------------------
+
+def _status_for_case(case):
+    """Cases don't carry an explicit UI status column in the current model,
+    so we derive the 3-way dashboard status from what already exists:
+    a case is 'resolved' once marked so, otherwise 'needs' action if there's
+    no AI-suggested next step yet (fresh/awaiting-strength), else 'review'.
+    If you add a real `status` column to Case, swap this for `case["status"]`.
+    """
+    if case.get("resolved"):
+        return "resolved"
+    if case.get("strength") is None and not case.get("summary"):
+        return "needs"
+    return "review"
+
+
+@app.route("/api/dashboard/data")
+@login_required
+def dashboard_data():
+    user_id = session["user_id"]
+
+    cases = db.get_user_cases(user_id)
+    cases_out = [
+        {
+            "id": c["id"],
+            "title": c.get("category") or c.get("summary") or "Untitled issue",
+            "category": c.get("category") or "Uncategorized",
+            "status": _status_for_case(c),
+            "updated": c.get("updated_at_display", ""),
+            "desc": c.get("summary") or "No summary yet — continue the conversation to get guidance.",
+            "step": c.get("step", 0),
+        }
+        for c in cases
+    ]
+
+    total = len(cases_out)
+    resolved = sum(1 for c in cases_out if c["status"] == "resolved")
+    needs = sum(1 for c in cases_out if c["status"] == "needs")
+    active = total - resolved
+
+    documents = db.get_user_documents(user_id)
+    docs_out = [
+        {
+            "name": d["file_name"] or "document",
+            "size": d.get("size_display", ""),
+            "date": d.get("uploaded_at_display", ""),
+            "url": d["file_url"],
+            "case_id": d["case_id"],
+        }
+        for d in documents
+    ]
+
+    activity = db.get_recent_activity(user_id, limit=8)
+
+    return jsonify(
+        {
+            "stats": [
+                {"label": "Active cases", "value": str(active), "delta": "", "tone": "st-1"},
+                {"label": "Resolved", "value": str(resolved), "delta": "", "tone": "st-2"},
+                {"label": "Pending actions", "value": str(needs), "delta": "", "tone": "st-3"},
+                {"label": "Documents on file", "value": str(len(docs_out)), "delta": "", "tone": "st-4"},
+            ],
+            "cases": cases_out,
+            "documents": docs_out,
+            "activity": activity,
+        }
+    )
+
+
+@app.route("/api/dashboard/cases/<int:case_id>/resolve", methods=["POST"])
+@login_required
+@csrf.exempt
+def resolve_case(case_id):
+    user_id = session["user_id"]
+    case = db.get_case(case_id, user_id=user_id)
+    if not case:
+        return jsonify({"error": "Case not found."}), 404
+    db.mark_case_resolved(case_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/dashboard/upload-document", methods=["POST"])
+@login_required
+@csrf.exempt
+def dashboard_upload_document():
+    """The sidebar 'Upload a document' button in dashboard.html posts here.
+    We store the file on Cloudinary, attach it to a case (an existing one if
+    case_id was passed, otherwise a fresh one), stash it as a pending upload
+    for that case's chat page, and hand the frontend a redirect URL. The
+    frontend then does `window.location = redirect_url` so the user lands
+    directly in the chat with their file already attached.
+    """
+    user_id = session["user_id"]
+
+    uploaded = request.files.get("file")
+    if not uploaded or not uploaded.filename:
+        return jsonify({"error": "No file provided."}), 400
+
+    file_bytes = uploaded.read()
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        return jsonify({"error": "File exceeds the 100MB limit."}), 400
+
+    try:
+        upload_result = cloudinary.uploader.upload(
+            file_bytes,
+            resource_type="auto",
+            folder="nyaysetu/case-documents",
+            filename=uploaded.filename,
+            use_filename=True,
+            unique_filename=True,
+        )
+    except Exception:
+        app.logger.exception("Cloudinary upload failed (dashboard sidebar)")
+        return jsonify({"error": "Failed to store the uploaded file."}), 502
+
+    file_url = upload_result.get("secure_url")
+    file_public_id = upload_result.get("public_id")
+    mime_type = uploaded.mimetype or "application/octet-stream"
+
+    case_id = request.form.get("case_id", type=int)
+    case = db.get_case(case_id, user_id=user_id) if case_id else None
+    if not case:
+        case = db.create_case(user_id=user_id)
+
+    # Stash for the chat page to pick up on next render (see _pop_pending_upload)
+    session["pending_upload"] = {
+        "file_url": file_url,
+        "file_name": uploaded.filename,
+        "file_type": mime_type,
+        "file_public_id": file_public_id,
+    }
+
+    return jsonify(
+        {
+            "ok": True,
+            "case_id": case["id"],
+            "redirect_url": url_for("resume_case", case_id=case["id"]),
+        }
+    )
 
 
 @app.route("/api/legal-chat", methods=["POST"])
@@ -114,7 +309,7 @@ def legal_chat():
     data = request.get_json(silent=True) or {}
     message = (data.get("message") or "").strip()
     # Optional — set when this turn is attached to a file uploaded via
-    # /api/analyze-document just before this call.
+    # /api/analyze-document (or the dashboard sidebar) just before this call.
     file_url = data.get("file_url")
     file_name = data.get("file_name")
     file_type = data.get("file_type")

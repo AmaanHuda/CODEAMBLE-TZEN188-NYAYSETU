@@ -531,101 +531,6 @@
             margin-bottom: 14px;
         }
 
-        .quick-actions-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .qa-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px;
-            border-radius: var(--r-xs);
-            border: 1px solid var(--card-border);
-        }
-
-        .qa-item:hover {
-            background: var(--soft-stone);
-        }
-
-        .qa-item .qa-icon {
-            width: 34px;
-            height: 34px;
-            border-radius: var(--r-xs);
-            background: var(--pale-green);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 15px;
-            flex-shrink: 0;
-        }
-
-        .qa-item .qa-copy strong {
-            display: block;
-            font-size: 13.5px;
-            font-weight: 500;
-        }
-
-        .qa-item .qa-copy span {
-            font-size: 12px;
-            color: var(--muted);
-        }
-
-        .todo-list {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .todo-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            padding: 9px 0;
-            border-bottom: 1px solid var(--card-border);
-        }
-
-        .todo-item:last-child {
-            border-bottom: none;
-        }
-
-        .todo-check {
-            width: 17px;
-            height: 17px;
-            border-radius: 5px;
-            border: 1.5px solid var(--border-light);
-            flex-shrink: 0;
-            margin-top: 2px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 10px;
-            color: #fff;
-        }
-
-        .todo-item.done .todo-check {
-            background: var(--deep-green);
-            border-color: var(--deep-green);
-        }
-
-        .todo-item .todo-text strong {
-            display: block;
-            font-size: 13px;
-            font-weight: 500;
-        }
-
-        .todo-item.done .todo-text strong {
-            text-decoration: line-through;
-            color: var(--muted);
-        }
-
-        .todo-item .todo-text span {
-            font-size: 11.5px;
-            color: var(--muted);
-        }
-
         .doc-list {
             display: flex;
             flex-direction: column;
@@ -638,6 +543,11 @@
             gap: 10px;
             padding: 9px 0;
             border-bottom: 1px solid var(--card-border);
+            cursor: pointer;
+        }
+
+        .doc-item:hover {
+            background: var(--soft-stone);
         }
 
         .doc-item:last-child {
@@ -667,20 +577,6 @@
             color: var(--muted);
         }
 
-        .doc-remove {
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            font-size: 11px;
-            color: var(--muted);
-            flex-shrink: 0;
-        }
-
-        .doc-remove:hover {
-            background: var(--soft-stone);
-            color: var(--error);
-        }
-
         .upload-btn {
             margin-top: 14px;
             width: 100%;
@@ -696,6 +592,17 @@
             border-color: var(--deep-green);
             color: var(--deep-green);
             background: var(--pale-green);
+        }
+
+        .upload-btn:disabled {
+            opacity: .6;
+            cursor: default;
+        }
+
+        .doc-empty {
+            padding: 14px 0;
+            font-size: 12.5px;
+            color: var(--muted);
         }
 
         /* ===== activity feed ===== */
@@ -834,116 +741,33 @@
             </div>
 
             <div class="side-stack">
-                <div class="side-panel">
-                    <h4>Quick actions</h4>
-                    <div class="quick-actions-list">
-                        <a href="new-issue.html" class="qa-item">
-                            <span class="qa-icon">💬</span>
-                            <span class="qa-copy"><strong>Describe a new issue</strong><span>Start a fresh case
-                                    intake</span></span>
-                        </a>
-                        <button class="qa-item" id="qaAnalyzeDoc" style="width:100%; text-align:left;">
-                            <span class="qa-icon">📄</span>
-                            <span class="qa-copy"><strong>Analyze a document</strong><span>Upload for a plain-language
-                                    read</span></span>
-                        </button>
-                        <button class="qa-item" id="qaFindLawyer" style="width:100%; text-align:left;">
-                            <span class="qa-icon">⚖️</span>
-                            <span class="qa-copy"><strong>Find a lawyer</strong><span>Connect with a verified
-                                    professional</span></span>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="side-panel">
-                    <h4>Upcoming actions</h4>
-                    <div class="todo-list" id="todoList"></div>
-                </div>
 
                 <div class="side-panel">
                     <h4>Recent documents</h4>
                     <div class="doc-list" id="docList"></div>
                     <button class="upload-btn" id="uploadDocBtn" type="button">＋ Upload a document</button>
-                    <input type="file" id="docFileInput" hidden multiple>
+                    <input type="file" id="docFileInput" hidden>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="toast" id="toast"></div>
-    {% include 'partials/footer.html' %}
+   
 
     <script>
         // ==========================================================================
-        // 🔌 DATA INTEGRATION POINT
+        // Dashboard data — all of it is real now, pulled from /api/dashboard/data
+        // (see app.py: dashboard_data()). Cases ARE the chat history: each case
+        // row is one conversation thread, "Continue conversation" / clicking a
+        // row takes you into /case/<id> which loads that exact thread.
         // ==========================================================================
-        // Replace the bodies of these functions with real calls to your backend.
-        // Each returns (or resolves to) the shape shown by the sample data below —
-        // swap the SAMPLE_* constants for a fetch() to your API and everything
-        // downstream (rendering, filtering, search) keeps working unchanged.
-        // The welcome name above is server-rendered from `user` — no JS needed for that one.
-        // ==========================================================================
-        async function fetchStats() { return SAMPLE_STATS; }
-        async function fetchCases() { return SAMPLE_CASES; }
-        async function fetchTodos() { return SAMPLE_TODOS; }
-        async function fetchDocuments() { return SAMPLE_DOCS; }
-        async function fetchActivity() { return SAMPLE_ACTIVITY; }
 
-        // ---- sample data (delete once your API is wired up) ----
-        const SAMPLE_STATS = [
-            { label: 'Active cases', value: '3', delta: '+1 this month', tone: 'st-1' },
-            { label: 'Resolved', value: '7', delta: '2 in the last 30 days', tone: 'st-2' },
-            { label: 'Pending actions', value: '2', delta: '1 due this week', tone: 'st-3' },
-            { label: 'Documents on file', value: '12', delta: '+3 this month', tone: 'st-4' }
-        ];
-
-        const SAMPLE_CASES = [
-            {
-                id: 'c1', title: 'Illegal eviction notice from landlord', category: 'Tenant & Property', status: 'needs', updated: 'Today',
-                desc: "You reported a 3-day eviction notice with no written warning. Most State Rent Control Acts require a minimum notice period — we're preparing a response letter for you.",
-                step: 1
-            },
-            {
-                id: 'c2', title: 'Two months of unpaid salary', category: 'Employment & Labour', status: 'review', updated: '2 days ago',
-                desc: "Your employer has not responded to the wage demand. Our review is checking your applicable Labour Code and the fastest forum to file a claim.",
-                step: 2
-            },
-            {
-                id: 'c3', title: 'Refund denied for defective order', category: 'Consumer Protection', status: 'resolved', updated: '1 week ago',
-                desc: "Resolved — a refund was issued after filing under the Consumer Protection Act, 2019. Case closed and archived.",
-                step: 4
-            },
-            {
-                id: 'c4', title: 'RTI application follow-up', category: 'Right to Information', status: 'review', updated: '3 days ago',
-                desc: "Your RTI application has crossed the statutory response window. We've drafted a first-appeal letter for you to review.",
-                step: 2
-            },
-            {
-                id: 'c5', title: 'Security deposit not returned', category: 'Tenant & Property', status: 'needs', updated: '5 days ago',
-                desc: "Your landlord has not returned the deposit 45 days after move-out. A demand letter is ready for you to send.",
-                step: 1
-            }
-        ];
-
-        const SAMPLE_TODOS = [
-            { text: 'Send eviction response letter', due: 'Due today', done: false },
-            { text: 'Upload your rental agreement', due: 'Due tomorrow', done: false },
-            { text: 'Confirm RTI appeal draft', due: 'Due in 3 days', done: false },
-            { text: 'Review consumer case closure', due: 'Completed', done: true }
-        ];
-
-        const SAMPLE_DOCS = [
-            { name: 'Rental_Agreement_2024.pdf', size: '1.2 MB', date: 'Uploaded Jun 12' },
-            { name: 'Eviction_Notice_Photo.jpg', size: '3.4 MB', date: 'Uploaded Jul 1' },
-            { name: 'Salary_Slips_MayJune.pdf', size: '640 KB', date: 'Uploaded Jun 28' }
-        ];
-
-        const SAMPLE_ACTIVITY = [
-            { icon: '📝', text: "Response letter drafted for 'Illegal eviction notice'", time: '2 hours ago' },
-            { icon: '📄', text: "You uploaded Eviction_Notice_Photo.jpg", time: 'Yesterday' },
-            { icon: '✅', text: "'Refund denied for defective order' marked resolved", time: '1 week ago' },
-            { icon: '💬', text: "Follow-up questions answered for RTI case", time: '1 week ago' }
-        ];
+        async function fetchDashboardData() {
+            const res = await fetch('/api/dashboard/data');
+            if (!res.ok) throw new Error('Failed to load dashboard data');
+            return res.json();
+        }
 
         // ---- toast ----
         let toastTimer;
@@ -962,11 +786,11 @@
         <div class="stat-card ${s.tone}">
           <span class="stat-num">${s.value}</span>
           <span class="stat-label">${s.label}</span>
-          <span class="stat-delta">${s.delta}</span>
+          ${s.delta ? `<span class="stat-delta">${s.delta}</span>` : ''}
         </div>`).join('');
         }
 
-        // ---- render: cases ----
+        // ---- render: cases (= chat history) ----
         let ALL_CASES = [];
         let currentFilter = 'all';
         let currentSearch = '';
@@ -1009,15 +833,19 @@
               </div>`).join('')}
           </div>
           <div class="case-detail-actions">
-            <a href="new-issue.html" class="btn btn-primary">Continue conversation</a>
-            <button class="btn-pill-outline mark-resolved" data-id="${c.id}">Mark as resolved</button>
+            <a href="/case/${c.id}" class="btn btn-primary">Continue conversation</a>
+            ${c.status !== 'resolved' ? `<button class="btn-pill-outline mark-resolved" data-id="${c.id}">Mark as resolved</button>` : ''}
           </div>
         </div>
       `).join('');
 
+            // Clicking anywhere on the row (except the resolve button) opens
+            // that case's chat thread directly — the expand-to-preview is just
+            // a chevron click, everything else navigates straight into the chat.
             table.querySelectorAll('.case-row').forEach(row => {
-                row.addEventListener('click', e => {
-                    if (e.target.closest('.mark-resolved')) return;
+                const chevron = row.querySelector('.case-chevron');
+                chevron.addEventListener('click', e => {
+                    e.stopPropagation();
                     const id = row.dataset.id;
                     const detail = table.querySelector(`.case-detail[data-detail-for="${id}"]`);
                     const isOpen = row.classList.contains('open');
@@ -1028,16 +856,26 @@
                         detail.classList.add('open');
                     }
                 });
+                row.addEventListener('click', e => {
+                    if (e.target.closest('.mark-resolved') || e.target.closest('.case-chevron')) return;
+                    window.location.href = `/case/${row.dataset.id}`;
+                });
             });
 
             table.querySelectorAll('.mark-resolved').forEach(btn => {
-                btn.addEventListener('click', e => {
+                btn.addEventListener('click', async e => {
                     e.stopPropagation();
                     const id = btn.dataset.id;
-                    const c = ALL_CASES.find(x => x.id === id);
-                    if (c) { c.status = 'resolved'; c.step = 4; c.updated = 'Just now'; }
-                    showToast('Case marked as resolved.');
-                    renderCases();
+                    try {
+                        const res = await fetch(`/api/dashboard/cases/${id}/resolve`, { method: 'POST' });
+                        if (!res.ok) throw new Error();
+                        const c = ALL_CASES.find(x => String(x.id) === String(id));
+                        if (c) { c.status = 'resolved'; c.step = 3; c.updated = 'Just now'; }
+                        showToast('Case marked as resolved.');
+                        renderCases();
+                    } catch {
+                        showToast('Could not update that case — try again.');
+                    }
                 });
             });
         }
@@ -1056,80 +894,91 @@
             renderCases();
         });
 
-        // ---- render: todos ----
-        function renderTodos(todos) {
-            const list = document.getElementById('todoList');
-            list.innerHTML = todos.map((t, i) => `
-        <div class="todo-item ${t.done ? 'done' : ''}" data-i="${i}">
-          <div class="todo-check">${t.done ? '✓' : ''}</div>
-          <div class="todo-text"><strong>${t.text}</strong><span>${t.due}</span></div>
-        </div>`).join('');
-
-            list.querySelectorAll('.todo-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    const i = item.dataset.i;
-                    todos[i].done = !todos[i].done;
-                    renderTodos(todos);
-                });
-            });
-        }
-
         // ---- render: documents ----
-        let DOCS = [];
-        function renderDocs() {
+        function renderDocs(docs) {
             const list = document.getElementById('docList');
-            list.innerHTML = DOCS.map((d, i) => `
-        <div class="doc-item">
+            if (!docs.length) {
+                list.innerHTML = `<div class="doc-empty">No documents uploaded yet.</div>`;
+                return;
+            }
+            list.innerHTML = docs.map(d => `
+        <div class="doc-item" data-case-id="${d.case_id}" title="Open in chat">
           <span class="doc-icon">📄</span>
-          <div class="doc-info"><strong>${d.name}</strong><span>${d.size} · ${d.date}</span></div>
-          <button class="doc-remove" data-i="${i}" aria-label="Remove document">✕</button>
+          <div class="doc-info"><strong>${d.name}</strong><span>${[d.size, d.date].filter(Boolean).join(' · ')}</span></div>
         </div>`).join('');
 
-            list.querySelectorAll('.doc-remove').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    DOCS.splice(btn.dataset.i, 1);
-                    renderDocs();
-                    showToast('Document removed.');
+            // Clicking a recent document takes you into the chat thread it
+            // belongs to, same as clicking its case in the list above.
+            list.querySelectorAll('.doc-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    window.location.href = `/case/${item.dataset.caseId}`;
                 });
             });
         }
-
-        document.getElementById('uploadDocBtn').addEventListener('click', () => document.getElementById('docFileInput').click());
-        document.getElementById('docFileInput').addEventListener('change', e => {
-            Array.from(e.target.files).forEach(f => {
-                DOCS.unshift({ name: f.name, size: (f.size / 1024).toFixed(0) + ' KB', date: 'Uploaded just now' });
-            });
-            e.target.value = '';
-            renderDocs();
-            showToast('Document uploaded.');
-        });
 
         // ---- render: activity ----
         function renderActivity(activity) {
-            document.getElementById('activityList').innerHTML = activity.map(a => `
+            const list = document.getElementById('activityList');
+            if (!activity.length) {
+                list.innerHTML = `<div class="activity-row"><span class="activity-text" style="color:var(--muted)">No activity yet.</span></div>`;
+                return;
+            }
+            list.innerHTML = activity.map(a => `
         <div class="activity-row">
           <span class="activity-icon">${a.icon}</span>
           <div><div class="activity-text">${a.text}</div><div class="activity-time">${a.time}</div></div>
         </div>`).join('');
         }
 
-        // ---- quick action buttons ----
-        document.getElementById('qaAnalyzeDoc').addEventListener('click', () => {
-            document.getElementById('docFileInput').click();
-        });
-        document.getElementById('qaFindLawyer').addEventListener('click', () => {
-            showToast('Opening Find a Lawyer — connect this to your /find-lawyer page.');
+        // ---- sidebar upload -> creates/attaches a case, redirects into that chat ----
+        const uploadBtn = document.getElementById('uploadDocBtn');
+        const uploadInput = document.getElementById('docFileInput');
+
+        uploadBtn.addEventListener('click', () => uploadInput.click());
+
+        uploadInput.addEventListener('change', async e => {
+            const file = e.target.files[0];
+            e.target.value = '';
+            if (!file) return;
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading…';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                // No case_id here => backend creates a fresh case for this
+                // upload. Pass one (e.g. from a "add to this case" affordance)
+                // if you want to attach to an existing thread instead.
+
+                const res = await fetch('/api/dashboard/upload-document', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Upload failed');
+
+                showToast('Document uploaded — opening chat…');
+                window.location.href = data.redirect_url;
+            } catch (err) {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '＋ Upload a document';
+                showToast(err.message || 'Upload failed — try again.');
+            }
         });
 
         // ---- init ----
         (async function init() {
-            renderStats(await fetchStats());
-            ALL_CASES = await fetchCases();
-            renderCases();
-            renderTodos(await fetchTodos());
-            DOCS = await fetchDocuments();
-            renderDocs();
-            renderActivity(await fetchActivity());
+            try {
+                const data = await fetchDashboardData();
+                renderStats(data.stats);
+                ALL_CASES = data.cases;
+                renderCases();
+                renderDocs(data.documents);
+                renderActivity(data.activity);
+            } catch (err) {
+                showToast('Could not load your dashboard — refresh to try again.');
+            }
         })();
     </script>
 </body>
