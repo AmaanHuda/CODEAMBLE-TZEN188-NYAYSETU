@@ -95,7 +95,7 @@ articles, recipes, resumes, ordinary reports, programming documents, general bus
 documents with no meaningful legal content.
 UNCERTAIN means the document is ambiguous... Use UNCERTAIN rather than guessing in
 either direction.
-STEP 2 — FULL ANALYSIS (only if LEGAL)
+STEP 2 — FULL ANALYSIS 
 Read the ENTIRE document text provided — including any tables, definitions, footnotes, \
 appendices, schedules, clauses, and signature/attachment references present in the text. \
 Do not limit yourself to the first portion of the text. Cross-reference clauses where \
@@ -157,6 +157,8 @@ The "summary" field should be readable in under a minute and should mention docu
 type, parties, purpose, duration, major financial obligations, major responsibilities, \
 and termination conditions where present in the document.
 
+
+Also after understanding of the issue please provide your references in the form of link. Eg Refernace Name: Referance link. Note that the link should be only from genuine sources like government websites, legal blogs, or reputable news outlets. Do not provide links to forums, social media, or unverified sources.
 Respond with ONLY the JSON object. No commentary, no markdown code fences.
 """
 
@@ -216,10 +218,64 @@ def get_legal_ai_reply(history, message):
     return data
 
 
+# Weights used to turn the model's per-risk LOW/MEDIUM/HIGH severities into a
+# single 0-100 "risk_score" the frontend can drive a risk meter off of.
+_SEVERITY_WEIGHTS = {"LOW": 20, "MEDIUM": 50, "HIGH": 85}
+
+_ANALYZED_DEFAULTS = {
+    "document_type": "This could not be determined from the provided document.",
+    "classification": "LEGAL",
+    "parties": [],
+    "duration": "This could not be determined from the provided document.",
+    "purpose": "This could not be determined from the provided document.",
+    "summary": "",
+    "important_terms": [],
+    "timeline": [],
+    "user_responsibilities": [],
+    "other_party_responsibilities": [],
+    "risks": [],
+    "important_clauses": [],
+    "recommended_actions": [],
+    "lawyer_questions": [],
+    "key_takeaways": [],
+    "disclaimer": (
+        "This tool helps you understand a document in plain English. It is not a "
+        "lawyer and does not provide legal advice. For decisions with real "
+        "consequences, please consult a qualified lawyer."
+    ),
+}
+
+
+def _compute_risk_score(risks):
+    """Turn the risks[] list (each with a LOW/MEDIUM/HIGH severity) into one
+    0-100 score. Dominated by the worst single risk, with a small bump for
+    having multiple high-severity issues stacked up."""
+    if not risks:
+        return 10
+    weights = [
+        _SEVERITY_WEIGHTS.get(str(r.get("severity", "")).upper(), 35)
+        for r in risks
+        if isinstance(r, dict)
+    ]
+    if not weights:
+        return 10
+    base = max(weights)
+    extra_high = max(0, sum(1 for w in weights if w >= _SEVERITY_WEIGHTS["HIGH"]) - 1)
+    return min(100, base + extra_high * 5)
+
+
 def analyze_legal_document(file_bytes, mime_type="application/pdf", file_name=""):
     """
-    file_bytes: raw bytes of the uploaded document (PDF).
-    Returns dict: {explanation: str, trust_score: int (0-100), trust_reasons: list[str]}
+    file_bytes: raw bytes of the uploaded document.
+
+    Returns one of:
+      {"status": "ANALYZED", "document_type": ..., "risks": [...], "risk_score": int, ...}
+        - the full DOCUMENT_SYSTEM_PROMPT schema, with every field defaulted so the
+          frontend never has to null-check, plus a computed "risk_score" (0-100).
+      {"status": "OUT_OF_CONTEXT", "classification": "NON_LEGAL" | "UNCERTAIN"}
+        - the upload isn't a legal document (or it's ambiguous).
+      {"status": "ERROR", "error": "<message>"}
+        - the model's response couldn't be parsed as JSON.
     """
     doc_part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type or "application/pdf")
     prompt_part = types.Part(
@@ -241,15 +297,29 @@ def analyze_legal_document(file_bytes, mime_type="application/pdf", file_name=""
     try:
         data = json.loads(raw)
     except (ValueError, TypeError):
-        data = {"explanation": raw or "Could not analyze this document.", "trust_score": 50, "trust_reasons": []}
+        return {
+            "status": "ERROR",
+            "error": "Could not parse the document analysis. Please try again.",
+        }
 
-    data.setdefault("explanation", "")
-    data.setdefault("trust_score", 50)
-    data.setdefault("trust_reasons", [])
+    if not isinstance(data, dict):
+        return {
+            "status": "ERROR",
+            "error": "Could not parse the document analysis. Please try again.",
+        }
 
-    try:
-        data["trust_score"] = max(0, min(100, int(data["trust_score"])))
-    except (TypeError, ValueError):
-        data["trust_score"] = 50
+    if data.get("status") == "OUT_OF_CONTEXT":
+        return {
+            "status": "OUT_OF_CONTEXT",
+            "classification": data.get("classification", "UNCERTAIN"),
+        }
 
+    # Treat anything else (status == "ANALYZED", or a missing/unexpected status
+    # from a slightly malformed model response) as a best-effort analysis —
+    # default every field so the caller never has to null-check.
+    data["status"] = "ANALYZED"
+    for key, default in _ANALYZED_DEFAULTS.items():
+        data.setdefault(key, default)
+
+    data["risk_score"] = _compute_risk_score(data["risks"])
     return data

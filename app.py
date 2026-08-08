@@ -34,7 +34,7 @@ csrf = CSRFProtect(app)
 with app.app_context():
     db.init_db()
 
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 15MB, matches the frontend's stated limit
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100MB, matches the frontend's stated limit
 
 
 def login_required(view_func):
@@ -195,17 +195,13 @@ def analyze_document():
         return jsonify({"error": "Invalid base64 file data."}), 400
 
     if len(file_bytes) > MAX_UPLOAD_BYTES:
-        return jsonify({"error": "File exceeds the 15MB limit."}), 400
+        return jsonify({"error": "File exceeds the 100MB limit."}), 400
 
-    # 1. Ask Gemini to read and explain the document
-    try:
-        result = analyze_legal_document(file_bytes, mime_type=mime_type, file_name=file_name)
-    except Exception:
-        app.logger.exception("Document analysis failed")
-        return jsonify({"error": "Failed to analyze document."}), 502
-
-    # 2. Upload the original file to Cloudinary — resource_type="auto" handles
-    # both PDFs and images. Neon only ever stores the URL this returns.
+    # 1. Upload the original file to Cloudinary FIRST — resource_type="auto"
+    # handles both PDFs and images. Neon only ever stores the URL this
+    # returns. This must not be gated on the Gemini call below: if the AI
+    # analysis fails for any reason, the user's file should still be safely
+    # stored and linked, not silently dropped.
     try:
         upload_result = cloudinary.uploader.upload(
             file_bytes,
@@ -217,12 +213,29 @@ def analyze_document():
         )
     except Exception:
         app.logger.exception("Cloudinary upload failed")
-        return jsonify({"error": "Failed to store the uploaded file."}), 502
+        return jsonify({"error": "Failed to store the uploaded file. Check server logs / Cloudinary credentials."}), 502
 
-    result["file_url"] = upload_result.get("secure_url")
+    file_url = upload_result.get("secure_url")
+    file_public_id = upload_result.get("public_id")
+    app.logger.info("Uploaded %s to Cloudinary: %s", file_name or "(unnamed)", file_url)
+
+    # 2. Ask Gemini to read and explain the document. If this fails, the file
+    # is already safely on Cloudinary — just degrade to a fallback
+    # explanation instead of discarding the upload and erroring out.
+    try:
+        result = analyze_legal_document(file_bytes, mime_type=mime_type, file_name=file_name)
+    except Exception:
+        app.logger.exception("Document analysis failed (file is still stored on Cloudinary: %s)", file_url)
+        result = {
+            "status": "ERROR",
+            "error": "We stored your document, but couldn't automatically analyze it right now. "
+                     "You can still reference it below, and describe its contents in the chat.",
+        }
+
+    result["file_url"] = file_url
     result["file_name"] = file_name
     result["file_type"] = mime_type
-    result["file_public_id"] = upload_result.get("public_id")
+    result["file_public_id"] = file_public_id
 
     return jsonify(result)
 

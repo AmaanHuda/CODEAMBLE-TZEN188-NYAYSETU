@@ -539,6 +539,284 @@
         text-align: center;
       }
 
+      /* ===== Document Analysis: topbar toggle ===== */
+      .analysis-toggle-btn {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--dm-on-dark-soft);
+        padding: 8px 14px;
+        border-radius: var(--r-full);
+        border: 1px solid var(--dm-hairline-dark);
+        opacity: 0.4;
+        pointer-events: none;
+        transition:
+          opacity 0.2s,
+          color 0.2s,
+          border-color 0.2s;
+      }
+
+      .analysis-toggle-btn.enabled {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .analysis-toggle-btn.enabled:hover {
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.22);
+      }
+
+      .analysis-toggle-btn .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--dm-coral);
+        flex-shrink: 0;
+        display: none;
+      }
+
+      .analysis-toggle-btn.enabled .dot {
+        display: block;
+      }
+
+      /* ===== Document Analysis: slide-in overlay panel ===== */
+      .analysis-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+        z-index: 40;
+      }
+
+      .analysis-overlay.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .analysis-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: min(440px, 92vw);
+        background: var(--dm-surface-dark-elevated);
+        border-left: 1px solid var(--dm-hairline-dark);
+        transform: translateX(100%);
+        transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+        z-index: 41;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .analysis-panel.show {
+        transform: translateX(0);
+      }
+
+      .analysis-panel-header {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 22px;
+        border-bottom: 1px solid var(--dm-hairline-dark);
+      }
+
+      .analysis-panel-title {
+        font-family: var(--font-display);
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .analysis-panel-close {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--dm-on-dark-soft);
+        font-size: 16px;
+      }
+
+      .analysis-panel-close:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+      }
+
+      .analysis-panel-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px 22px 40px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .analysis-panel-body::-webkit-scrollbar {
+        width: 5px;
+      }
+
+      .analysis-panel-body::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 10px;
+      }
+
+      .ap-section-title {
+        font-family: var(--font-display);
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--dm-coral);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 10px;
+      }
+
+      .ap-overview-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 7px 14px;
+        font-size: 13.5px;
+      }
+
+      .ap-overview-grid dt {
+        color: var(--dm-on-dark-soft);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding-top: 2px;
+      }
+
+      .ap-overview-grid dd {
+        color: #f1efe9;
+        line-height: 1.5;
+      }
+
+      .ap-text {
+        font-size: 14.5px;
+        line-height: 1.6;
+        color: #dedede;
+      }
+
+      .ap-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .ap-list li {
+        font-size: 14px;
+        line-height: 1.5;
+        color: #dedede;
+        padding-left: 16px;
+        position: relative;
+      }
+
+      .ap-list li::before {
+        content: "—";
+        position: absolute;
+        left: 0;
+        color: var(--dm-coral);
+      }
+
+      .ap-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--dm-hairline-dark);
+        border-radius: var(--r-md);
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .ap-card + .ap-card {
+        margin-top: 8px;
+      }
+
+      .ap-card-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+      }
+
+      .ap-card-text {
+        font-size: 13.5px;
+        color: #dedede;
+        line-height: 1.55;
+      }
+
+      .ap-severity-chip {
+        align-self: flex-start;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 3px 9px;
+        border-radius: var(--r-full);
+        font-weight: 600;
+      }
+
+      .ap-severity-high {
+        background: rgba(179, 0, 0, 0.18);
+        color: #ff8a80;
+      }
+
+      .ap-severity-medium {
+        background: rgba(201, 138, 30, 0.18);
+        color: #e3b34d;
+      }
+
+      .ap-severity-low {
+        background: rgba(10, 125, 92, 0.18);
+        color: #4fd8ab;
+      }
+
+      .ap-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+
+      .ap-table th {
+        text-align: left;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--dm-on-dark-soft);
+        padding: 0 8px 8px 0;
+        border-bottom: 1px solid var(--dm-hairline-dark);
+      }
+
+      .ap-table td {
+        padding: 10px 8px 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        color: #dedede;
+        vertical-align: top;
+        line-height: 1.45;
+      }
+
+      .ap-disclaimer {
+        font-size: 11.5px;
+        color: var(--dm-on-dark-soft);
+        line-height: 1.5;
+        padding-top: 6px;
+        border-top: 1px solid var(--dm-hairline-dark);
+      }
+
+      .ap-empty {
+        font-size: 13px;
+        color: var(--dm-on-dark-soft);
+        font-style: italic;
+      }
+
       @media (max-width: 640px) {
         .chat-topbar {
           padding: 14px 16px;
@@ -550,6 +828,14 @@
 
         .bubble {
           max-width: 92%;
+        }
+
+        .analysis-toggle-btn span.label {
+          display: none;
+        }
+
+        .analysis-panel {
+          width: 100vw;
         }
       }
     </style>
@@ -564,7 +850,33 @@
         <span class="brand-icon">⚖️</span>
         <span class="brand-text">NyaySetu Intake</span>
       </div>
-      <span class="chat-status"><span class="chat-dot"></span> Live</span>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <button
+          class="analysis-toggle-btn"
+          id="analysisToggleBtn"
+          type="button"
+          aria-label="View document analysis"
+        >
+          <span class="dot" id="analysisDot"></span>
+          📄 <span class="label">Analysis</span>
+        </button>
+        <span class="chat-status"><span class="chat-dot"></span> Live</span>
+      </div>
+    </div>
+
+    <div class="analysis-overlay" id="analysisOverlay"></div>
+    <div class="analysis-panel" id="analysisPanel">
+      <div class="analysis-panel-header">
+        <span class="analysis-panel-title">📄 Document Analysis</span>
+        <button
+          class="analysis-panel-close"
+          id="analysisPanelClose"
+          aria-label="Close analysis panel"
+        >
+          ✕
+        </button>
+      </div>
+      <div class="analysis-panel-body" id="analysisPanelBody"></div>
     </div>
 
     <div class="chat-main">
@@ -634,6 +946,210 @@
       const resultCard = document.getElementById("resultCard");
       const resultBadge = document.getElementById("resultBadge");
       const resultText = document.getElementById("resultText");
+
+      // ---- document analysis panel ----
+      const analysisToggleBtn = document.getElementById("analysisToggleBtn");
+      const analysisDot = document.getElementById("analysisDot");
+      const analysisOverlay = document.getElementById("analysisOverlay");
+      const analysisPanel = document.getElementById("analysisPanel");
+      const analysisPanelClose = document.getElementById("analysisPanelClose");
+      const analysisPanelBody = document.getElementById("analysisPanelBody");
+      let currentDocAnalysis = null; // last successful {status:"ANALYZED", ...} payload
+
+      function openAnalysisPanel() {
+        analysisOverlay.classList.add("show");
+        analysisPanel.classList.add("show");
+      }
+
+      function closeAnalysisPanel() {
+        analysisOverlay.classList.remove("show");
+        analysisPanel.classList.remove("show");
+      }
+
+      analysisToggleBtn.addEventListener("click", () => {
+        if (currentDocAnalysis) openAnalysisPanel();
+      });
+      analysisPanelClose.addEventListener("click", closeAnalysisPanel);
+      analysisOverlay.addEventListener("click", closeAnalysisPanel);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeAnalysisPanel();
+      });
+
+      // Escapes text pulled from the (untrusted, model-extracted) document
+      // before it's dropped into innerHTML.
+      function escapeHtml(str) {
+        const div = document.createElement("div");
+        div.textContent = str ?? "";
+        return div.innerHTML;
+      }
+
+      function apSection(title, innerHtml) {
+        return `<div class="ap-section"><div class="ap-section-title">${title}</div>${innerHtml}</div>`;
+      }
+
+      function apList(items) {
+        if (!items || items.length === 0) {
+          return `<div class="ap-empty">Nothing identified in the document.</div>`;
+        }
+        return `<ul class="ap-list">${items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`;
+      }
+
+      function severityClass(sev) {
+        const s = (sev || "").toUpperCase();
+        if (s === "HIGH") return "ap-severity-high";
+        if (s === "MEDIUM") return "ap-severity-medium";
+        return "ap-severity-low";
+      }
+
+      // Renders a full "ANALYZED" document-analysis payload (see
+      // gemini_service.py::analyze_legal_document) into the slide-in panel,
+      // and marks the toggle button as enabled so it can be reopened later.
+      function renderAnalysisPanel(data) {
+        currentDocAnalysis = data;
+        analysisToggleBtn.classList.add("enabled");
+
+        const riskScore =
+          typeof data.risk_score === "number" ? data.risk_score : 15;
+        let riskLabel = "Low Risk";
+        let riskColor = "#0a7d5c";
+        if (riskScore >= 70) {
+          riskLabel = "High Risk ⚠️";
+          riskColor = "#b30000";
+        } else if (riskScore >= 40) {
+          riskLabel = "Moderate Risk";
+          riskColor = "#c98a1e";
+        }
+
+        const parties =
+          data.parties && data.parties.length
+            ? data.parties.join(", ")
+            : "This could not be determined from the provided document.";
+
+        let html = `
+                <div class="risk-section">
+                    <div class="risk-header">
+                        <span class="risk-label">Document Risk Level</span>
+                        <span class="risk-value" style="color: ${riskColor};">${riskLabel} (${riskScore}%)</span>
+                    </div>
+                    <div class="risk-bar-track">
+                        <div class="risk-bar-fill" id="apRiskFill" style="background: ${riskColor};"></div>
+                    </div>
+                </div>`;
+
+        html += apSection(
+          "📄 Document Overview",
+          `<dl class="ap-overview-grid">
+                    <dt>Type</dt><dd>${escapeHtml(data.document_type)}</dd>
+                    <dt>Parties</dt><dd>${escapeHtml(parties)}</dd>
+                    <dt>Duration</dt><dd>${escapeHtml(data.duration)}</dd>
+                    <dt>Purpose</dt><dd>${escapeHtml(data.purpose)}</dd>
+                </dl>`,
+        );
+
+        html += apSection(
+          "📝 Simple Summary",
+          `<div class="ap-text">${escapeHtml(data.summary)}</div>`,
+        );
+
+        if (data.important_terms && data.important_terms.length) {
+          html += apSection(
+            "📌 Important Terms & Conditions",
+            data.important_terms
+              .map(
+                (t) => `
+                    <div class="ap-card">
+                        <div class="ap-card-title">${escapeHtml(t.term)}</div>
+                        <div class="ap-card-text"><strong>Says:</strong> ${escapeHtml(t.whatItSays)}</div>
+                        <div class="ap-card-text"><strong>Means:</strong> ${escapeHtml(t.simpleMeaning)}</div>
+                        <div class="ap-card-text"><strong>Why it matters:</strong> ${escapeHtml(t.whyItMatters)}</div>
+                    </div>`,
+              )
+              .join(""),
+          );
+        }
+
+        if (data.timeline && data.timeline.length) {
+          html += apSection(
+            "⏰ Timeline & Deadlines",
+            `<table class="ap-table">
+                    <thead><tr><th>Date / Deadline</th><th>Action</th><th>Responsible</th><th>Consequence</th></tr></thead>
+                    <tbody>${data.timeline
+                      .map(
+                        (t) => `
+                        <tr>
+                            <td>${escapeHtml(t.date_or_deadline)}</td>
+                            <td>${escapeHtml(t.action)}</td>
+                            <td>${escapeHtml(t.responsible_party)}</td>
+                            <td>${escapeHtml(t.consequence)}</td>
+                        </tr>`,
+                      )
+                      .join("")}</tbody>
+                </table>`,
+          );
+        }
+
+        html += apSection(
+          "👤 Your Responsibilities",
+          apList(data.user_responsibilities),
+        );
+        html += apSection(
+          "🏢 Other Party's Responsibilities",
+          apList(data.other_party_responsibilities),
+        );
+
+        if (data.risks && data.risks.length) {
+          html += apSection(
+            "🚨 Risks & Red Flags",
+            data.risks
+              .map(
+                (r) => `
+                    <div class="ap-card">
+                        <span class="ap-severity-chip ${severityClass(r.severity)}">${escapeHtml(r.severity || "LOW")}</span>
+                        <div class="ap-card-title" style="margin-top: 4px;">${escapeHtml(r.issue)}</div>
+                        <div class="ap-card-text">${escapeHtml(r.explanation)}</div>
+                    </div>`,
+              )
+              .join(""),
+          );
+        }
+
+        if (data.important_clauses && data.important_clauses.length) {
+          html += apSection(
+            "📑 Important Clauses",
+            data.important_clauses
+              .map(
+                (c) => `
+                    <div class="ap-card">
+                        <div class="ap-card-title">${escapeHtml(c.title)}</div>
+                        <div class="ap-card-text">${escapeHtml(c.explanation)}</div>
+                    </div>`,
+              )
+              .join(""),
+          );
+        }
+
+        html += apSection(
+          "✅ Actions You May Want to Take",
+          apList(data.recommended_actions),
+        );
+        html += apSection(
+          "⚖️ Questions You May Want to Ask a Lawyer",
+          apList(data.lawyer_questions),
+        );
+        html += apSection(
+          "🔍 What You Should Know",
+          apList(data.key_takeaways),
+        );
+
+        html += `<div class="ap-disclaimer">${escapeHtml(data.disclaimer)}</div>`;
+
+        analysisPanelBody.innerHTML = html;
+
+        setTimeout(() => {
+          const fill = document.getElementById("apRiskFill");
+          if (fill) fill.style.width = riskScore + "%";
+        }, 80);
+      }
 
       let pendingFiles = [];
 
@@ -888,7 +1404,33 @@
               } else {
                 addBubble("📎 " + attachedFile.name, "user");
               }
-              text += `\n\n[System Attached Document Context: "${attachedFile.name}" Summary: "${docData.explanation}"]`;
+
+              // docData.status comes from analyze_legal_document(): "ANALYZED",
+              // "OUT_OF_CONTEXT" (not a legal document), or "ERROR" (model call
+              // failed but the file is still safely stored on Cloudinary).
+              if (docData.status === "ANALYZED") {
+                renderAnalysisPanel(docData);
+                openAnalysisPanel();
+                addBubble(
+                  "📄 I've broken this document down — see the analysis panel for the full picture. In short: " +
+                    (docData.summary ||
+                      "open the panel on the right for the details."),
+                  "ai",
+                );
+                text += `\n\n[System Attached Document Context: "${attachedFile.name}" Summary: "${docData.summary}"]`;
+              } else if (docData.status === "OUT_OF_CONTEXT") {
+                addBubble(
+                  "This attachment doesn't look like a legal document, so I can't produce a structured breakdown of it — but go ahead and describe your situation and I'll help however I can.",
+                  "ai",
+                );
+              } else {
+                addBubble(
+                  "⚠️ " +
+                    (docData.error ||
+                      "We stored your document, but couldn't automatically analyze it right now."),
+                  "ai",
+                );
+              }
             } catch (attachErr) {
               typing.remove();
               addBubble(`⚠️ ${attachErr.message}`, "ai");
