@@ -125,13 +125,21 @@
       }
 
       /* ===== main chat area ===== */
+      .app-shell {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: row;
+        overflow: hidden;
+      }
+
       .chat-main {
         flex: 1;
+        min-width: 0;
         min-height: 0;
         display: flex;
         flex-direction: column;
         align-items: center;
-        width: 100%;
         overflow: hidden;
       }
 
@@ -583,39 +591,49 @@
         display: block;
       }
 
-      /* ===== Document Analysis: slide-in overlay panel ===== */
-      .analysis-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.45);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.25s ease;
-        z-index: 40;
+      /* ===== Document Analysis: resizable split-pane panel ===== */
+      .analysis-resizer {
+        display: none;
+        flex-shrink: 0;
+        width: 6px;
+        cursor: col-resize;
+        position: relative;
+        background: transparent;
       }
 
-      .analysis-overlay.show {
-        opacity: 1;
-        pointer-events: auto;
+      .analysis-resizer.show {
+        display: block;
+      }
+
+      .analysis-resizer::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 2px;
+        width: 2px;
+        background: var(--dm-hairline-dark);
+        transition: background 0.15s;
+      }
+
+      .analysis-resizer:hover::after,
+      .analysis-resizer.dragging::after {
+        background: var(--dm-coral);
       }
 
       .analysis-panel {
-        position: fixed;
-        top: 0;
-        right: 0;
+        display: none;
+        flex-shrink: 0;
+        width: 420px;
+        min-width: 320px;
+        max-width: 720px;
         height: 100%;
-        width: min(440px, 92vw);
         background: var(--dm-surface-dark-elevated);
-        border-left: 1px solid var(--dm-hairline-dark);
-        transform: translateX(100%);
-        transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
-        z-index: 41;
-        display: flex;
         flex-direction: column;
       }
 
       .analysis-panel.show {
-        transform: translateX(0);
+        display: flex;
       }
 
       .analysis-panel-header {
@@ -623,7 +641,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 20px 22px;
+        padding: 18px 22px;
         border-bottom: 1px solid var(--dm-hairline-dark);
       }
 
@@ -834,8 +852,14 @@
           display: none;
         }
 
+        .analysis-resizer {
+          display: none !important;
+        }
+
         .analysis-panel {
-          width: 100vw;
+          width: 100% !important;
+          max-width: 100%;
+          min-width: 0;
         }
       }
     </style>
@@ -864,64 +888,66 @@
       </div>
     </div>
 
-    <div class="analysis-overlay" id="analysisOverlay"></div>
-    <div class="analysis-panel" id="analysisPanel">
-      <div class="analysis-panel-header">
-        <span class="analysis-panel-title">📄 Document Analysis</span>
-        <button
-          class="analysis-panel-close"
-          id="analysisPanelClose"
-          aria-label="Close analysis panel"
-        >
-          ✕
-        </button>
+    <div class="app-shell">
+      <div class="chat-main">
+        <div class="chat-column">
+          <div class="chat-log" id="chatLog"></div>
+
+          <div class="result-card" id="resultCard">
+            <span class="result-badge" id="resultBadge">Category</span>
+            <p id="resultText"></p>
+          </div>
+
+          <div class="attachment-tray" id="attachmentTray"></div>
+
+          <div class="chat-input-dock">
+            <div class="console-input-row">
+              <button
+                class="attach-btn"
+                id="attachBtn"
+                type="button"
+                aria-label="Attach a file"
+              >
+                📎
+              </button>
+              <!-- Accepts PDFs and images — both get uploaded to Cloudinary -->
+              <input
+                type="file"
+                id="fileInput"
+                accept="application/pdf,.pdf,image/*"
+                hidden
+              />
+              <input
+                type="text"
+                id="chatInput"
+                placeholder="Type your reply…"
+                autocomplete="off"
+              />
+              <button class="send-btn" id="sendBtn" aria-label="Send message">
+                ➤
+              </button>
+            </div>
+            <div class="chat-foot">
+              Your description and files stay private and are never shared
+              without your consent.
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="analysis-panel-body" id="analysisPanelBody"></div>
-    </div>
 
-    <div class="chat-main">
-      <div class="chat-column">
-        <div class="chat-log" id="chatLog"></div>
-
-        <div class="result-card" id="resultCard">
-          <span class="result-badge" id="resultBadge">Category</span>
-          <p id="resultText"></p>
+      <div class="analysis-resizer" id="analysisResizer"></div>
+      <div class="analysis-panel" id="analysisPanel">
+        <div class="analysis-panel-header">
+          <span class="analysis-panel-title">📄 Document Analysis</span>
+          <button
+            class="analysis-panel-close"
+            id="analysisPanelClose"
+            aria-label="Close analysis panel"
+          >
+            ✕
+          </button>
         </div>
-
-        <div class="attachment-tray" id="attachmentTray"></div>
-
-        <div class="chat-input-dock">
-          <div class="console-input-row">
-            <button
-              class="attach-btn"
-              id="attachBtn"
-              type="button"
-              aria-label="Attach a file"
-            >
-              📎
-            </button>
-            <!-- Accepts PDFs and images — both get uploaded to Cloudinary -->
-            <input
-              type="file"
-              id="fileInput"
-              accept="application/pdf,.pdf,image/*"
-              hidden
-            />
-            <input
-              type="text"
-              id="chatInput"
-              placeholder="Type your reply…"
-              autocomplete="off"
-            />
-            <button class="send-btn" id="sendBtn" aria-label="Send message">
-              ➤
-            </button>
-          </div>
-          <div class="chat-foot">
-            Your description and files stay private and are never shared without
-            your consent.
-          </div>
-        </div>
+        <div class="analysis-panel-body" id="analysisPanelBody"></div>
       </div>
     </div>
 
@@ -947,33 +973,85 @@
       const resultBadge = document.getElementById("resultBadge");
       const resultText = document.getElementById("resultText");
 
-      // ---- document analysis panel ----
+      // ---- document analysis panel (resizable split pane) ----
       const analysisToggleBtn = document.getElementById("analysisToggleBtn");
-      const analysisDot = document.getElementById("analysisDot");
-      const analysisOverlay = document.getElementById("analysisOverlay");
+      const analysisResizer = document.getElementById("analysisResizer");
       const analysisPanel = document.getElementById("analysisPanel");
       const analysisPanelClose = document.getElementById("analysisPanelClose");
       const analysisPanelBody = document.getElementById("analysisPanelBody");
       let currentDocAnalysis = null; // last successful {status:"ANALYZED", ...} payload
+      let analysisPanelWidth = 420; // px — remembered across open/close
 
       function openAnalysisPanel() {
-        analysisOverlay.classList.add("show");
+        analysisPanel.style.width = analysisPanelWidth + "px";
         analysisPanel.classList.add("show");
+        analysisResizer.classList.add("show");
       }
 
       function closeAnalysisPanel() {
-        analysisOverlay.classList.remove("show");
         analysisPanel.classList.remove("show");
+        analysisResizer.classList.remove("show");
       }
 
       analysisToggleBtn.addEventListener("click", () => {
-        if (currentDocAnalysis) openAnalysisPanel();
+        if (!currentDocAnalysis) return;
+        if (analysisPanel.classList.contains("show")) {
+          closeAnalysisPanel();
+        } else {
+          openAnalysisPanel();
+        }
       });
       analysisPanelClose.addEventListener("click", closeAnalysisPanel);
-      analysisOverlay.addEventListener("click", closeAnalysisPanel);
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") closeAnalysisPanel();
       });
+
+      // Drag-to-resize: grab the divider, resize the panel to follow the
+      // pointer, clamped to the panel's min/max width.
+      let isResizingPanel = false;
+
+      function startResize(clientX) {
+        isResizingPanel = true;
+        analysisResizer.classList.add("dragging");
+        document.body.style.userSelect = "none";
+      }
+
+      function doResize(clientX) {
+        if (!isResizingPanel) return;
+        const newWidth = window.innerWidth - clientX;
+        const clamped = Math.min(720, Math.max(320, newWidth));
+        analysisPanelWidth = clamped;
+        analysisPanel.style.width = clamped + "px";
+      }
+
+      function endResize() {
+        if (!isResizingPanel) return;
+        isResizingPanel = false;
+        analysisResizer.classList.remove("dragging");
+        document.body.style.userSelect = "";
+      }
+
+      analysisResizer.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        startResize(e.clientX);
+      });
+      window.addEventListener("mousemove", (e) => doResize(e.clientX));
+      window.addEventListener("mouseup", endResize);
+
+      analysisResizer.addEventListener(
+        "touchstart",
+        (e) => startResize(e.touches[0].clientX),
+        { passive: true },
+      );
+      window.addEventListener(
+        "touchmove",
+        (e) => {
+          if (!isResizingPanel) return;
+          doResize(e.touches[0].clientX);
+        },
+        { passive: true },
+      );
+      window.addEventListener("touchend", endResize);
 
       // Escapes text pulled from the (untrusted, model-extracted) document
       // before it's dropped into innerHTML.
