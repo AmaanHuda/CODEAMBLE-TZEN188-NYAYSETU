@@ -81,6 +81,92 @@ def dashboard():
     return render_template("dashboard.html")
 
 
+@app.route("/new-issue")
+@login_required
+def chat():
+    # Starting a fresh issue should start a fresh case, not keep appending
+    # to whatever case was active before.
+    #
+    # IMPORTANT: this route must only ever be hit when the user deliberately
+    # starts a *new* issue (e.g. clicking "+ Describe New Issue" from the
+    # dashboard). It must NOT be hit again mid-conversation. The frontend is
+    # responsible for that: once the first message on this page creates a
+    # case, new_issue.html pushes the URL to /case/<id> via
+    # history.replaceState so a refresh lands on resume_case() below instead
+    # of back here. If that URL swap ever gets removed, refreshing mid-chat
+    # will silently pop active_case_id and start a brand new case, which is
+    # exactly the "AI forgets everything" symptom.
+    session.pop("active_case_id", None)
+    return render_template("new_issue.html", pending_upload=_pop_pending_upload())
+
+
+@app.route("/case/<int:case_id>")
+@login_required
+def resume_case(case_id):
+    """Clicking a row in the dashboard's case list (= chat history) lands
+    here. We verify ownership, make this the active case for the session,
+    and hand the chat template the full message history so it can render
+    the thread instead of starting blank."""
+    user_id = session["user_id"]
+    case = db.get_case(case_id, user_id=user_id)
+    if not case:
+        flash("That case couldn't be found.")
+        return redirect(url_for("dashboard"))
+
+    session["active_case_id"] = case["id"]
+    history = db.get_case_messages(case["id"])
+
+    # The template needs chat_history/case as JSON embedded straight into a
+    # <script> tag (see new_issue.html's window.__CHAT_HISTORY__ /
+    # window.__CASE__). Flask's `| tojson` filter chokes on non-JSON-native
+    # types like the datetime objects psycopg2 hands back, so strip down to
+    # exactly what the JS bootstrap needs to replay the thread.
+    chat_history_for_js = [
+        {
+            "role": m["role"],
+            "content": m["content"],
+            "file_url": m.get("file_url"),
+            "file_name": m.get("file_name"),
+            "file_type": m.get("file_type"),
+        }
+        for m in history
+    ]
+    case_for_js = {
+        "id": case["id"],
+        "category": case.get("category"),
+        "summary": case.get("summary"),
+        "strength": case.get("strength"),
+        "resolved": case.get("resolved"),
+    }
+
+    return render_template(
+        "new_issue.html",
+        case=case,
+        chat_history=chat_history_for_js,
+        case_json=case_for_js,
+        pending_upload=_pop_pending_upload(),
+    )
+
+
+def _pop_pending_upload():
+    """A doc uploaded from the dashboard sidebar is stashed in the session
+    for exactly one request, then handed to new_issue.html so its JS can
+    render the attachment bubble and pre-fill the file_url/file_name/etc.
+    fields that /api/legal-chat expects on the next message. Template side
+    (new_issue.html) needs something like:
+
+        {% if pending_upload %}
+        <script>
+          window.__PENDING_UPLOAD__ = {{ pending_upload | tojson }};
+        </script>
+        {% endif %}
+
+    and JS that reads window.__PENDING_UPLOAD__ on load to show the
+    attached-file chip above the composer.
+    """
+    return session.pop("pending_upload", None)
+
+
 @app.route("/login", methods=["GET"])
 def login():
     return render_template("login.html")
@@ -124,57 +210,6 @@ def signup():
 def logout():
     session.pop("user_id", None)
     return redirect(url_for("home"))
-
-
-@app.route("/new-issue")
-@login_required
-def chat():
-    # Starting a fresh issue should start a fresh case, not keep appending
-    # to whatever case was active before.
-    session.pop("active_case_id", None)
-    return render_template("new_issue.html", pending_upload=_pop_pending_upload())
-
-
-@app.route("/case/<int:case_id>")
-@login_required
-def resume_case(case_id):
-    """Clicking a row in the dashboard's case list (= chat history) lands
-    here. We verify ownership, make this the active case for the session,
-    and hand the chat template the full message history so it can render
-    the thread instead of starting blank."""
-    user_id = session["user_id"]
-    case = db.get_case(case_id, user_id=user_id)
-    if not case:
-        flash("That case couldn't be found.")
-        return redirect(url_for("dashboard"))
-
-    session["active_case_id"] = case["id"]
-    history = db.get_case_messages(case["id"])
-    return render_template(
-        "new_issue.html",
-        case=case,
-        chat_history=history,
-        pending_upload=_pop_pending_upload(),
-    )
-
-
-def _pop_pending_upload():
-    """A doc uploaded from the dashboard sidebar is stashed in the session
-    for exactly one request, then handed to new_issue.html so its JS can
-    render the attachment bubble and pre-fill the file_url/file_name/etc.
-    fields that /api/legal-chat expects on the next message. Template side
-    (new_issue.html) needs something like:
-
-        {% if pending_upload %}
-        <script>
-          window.__PENDING_UPLOAD__ = {{ pending_upload | tojson }};
-        </script>
-        {% endif %}
-
-    and JS that reads window.__PENDING_UPLOAD__ on load to show the
-    attached-file chip above the composer.
-    """
-    return session.pop("pending_upload", None)
 
 
 # ---------------------------------------------------------------------------

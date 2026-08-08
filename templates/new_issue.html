@@ -866,6 +866,17 @@
   </head>
 
   <body>
+    <!--
+      Server-rendered handoff of this case's saved thread (see app.py's
+      resume_case()). When the user lands here fresh via /new-issue there is
+      no case yet, so these stay empty/null and the JS bootstrap falls back
+      to the plain welcome message.
+    -->
+    <script>
+      window.__CHAT_HISTORY__ = {{ (chat_history | tojson) if chat_history else '[]' }};
+      window.__CASE__ = {{ (case_json | tojson) if case_json else 'null' }};
+    </script>
+
     <div class="chat-topbar">
       <a href="/" class="chat-back"
         >← <span class="label">Back to NyaySetu</span></a
@@ -953,13 +964,23 @@
 
     <script>
       // ==========================================================================
-      // Full-screen continuation of the NyaySetu intake chat. If the user typed
-      // their first message on the landing page, it's handed off here via
-      // sessionStorage (see index.html) and auto-sent on load.
+      // Full-screen continuation of the NyaySetu intake chat.
       //
-      // chatHistory is kept client-side only for the UI's own bookkeeping (e.g.
-      // numbering risk-bar element ids) — the server rebuilds the real Gemini
-      // history from Postgres on every call, it does not trust this array.
+      // Two data sources feed the initial render:
+      //   1. window.__CHAT_HISTORY__ / window.__CASE__ — set above from the
+      //      server (resume_case() in app.py) when this page was loaded for
+      //      an existing case, i.e. GET /case/<id>. This is the fix for
+      //      "the AI forgets everything after refresh": that route already
+      //      fetched the full thread from Postgres, we just now actually
+      //      replay it into the chat log instead of discarding it.
+      //   2. sessionStorage("nyaysetu_initial_message") — set by the landing
+      //      page when the user types their very first message there before
+      //      any case exists yet (GET /new-issue, no history).
+      //
+      // chatHistory (lowercase) is kept client-side only for the UI's own
+      // bookkeeping (e.g. numbering risk-bar element ids) — the server
+      // rebuilds the real Gemini history from Postgres on every call, it
+      // does not trust this array.
       // ==========================================================================
       let chatHistory = []; // [{ role: 'user'|'model', content }]
 
@@ -1436,6 +1457,20 @@
         resultCard.classList.add("show");
       }
 
+      // Swaps the visible URL to /case/<id> without a page reload, so that
+      // a refresh from here on lands on resume_case() (which restores the
+      // thread) instead of chat() (which wipes session["active_case_id"]
+      // and starts a brand-new case). This is the other half of the
+      // "AI forgets everything on refresh" fix — see app.py's chat()/
+      // resume_case() comments for the server side of it.
+      function syncUrlToCase(caseId) {
+        if (!caseId) return;
+        const targetPath = `/case/${caseId}`;
+        if (window.location.pathname !== targetPath) {
+          window.history.replaceState({}, "", targetPath);
+        }
+      }
+
       // Single send path used both for the bootstrapped first message and
       // every subsequent turn.
       async function handleSend(prefill) {
@@ -1539,6 +1574,10 @@
           chatHistory.push({ role: "model", content: result.reply });
 
           updateResultCard(result);
+
+          // Every turn creates/confirms a case_id server-side — keep the
+          // URL bar in sync so a refresh always resumes instead of resets.
+          syncUrlToCase(result.case_id);
         } catch (err) {
           typing.remove();
           addBubble(
@@ -1555,8 +1594,64 @@
         if (e.key === "Enter") handleSend();
       });
 
-      // ---- bootstrap: pick up the handed-off first message, or show a welcome ----
+      // ---- bootstrap: replay a resumed case's history, pick up a handed-off
+      // first message from the landing page, or show a fresh welcome ----
       (function bootstrap() {
+        const history = Array.isArray(window.__CHAT_HISTORY__)
+          ? window.__CHAT_HISTORY__
+          : [];
+        const caseInfo = window.__CASE__ || null;
+
+        if (history.length > 0) {
+          // Resuming an existing case (GET /case/<id>) — replay every saved
+          // turn instead of showing the "Hi, I'm here to help" welcome, and
+          // rebuild chatHistory/resultCard from what's stored.
+          addBubble("Session started", "system");
+
+          let structuredCount = 0;
+          history.forEach((m) => {
+            if (m.file_url) {
+              addFileLinkBubble("📎 " + (m.file_name || "attachment"), m.file_url);
+            }
+            if (m.role === "user") {
+              if (m.content) addBubble(m.content, "user");
+              chatHistory.push({ role: "user", content: m.content });
+            } else {
+              // A saved assistant turn is either a resolved "answer" (matches
+              // the ### 1./2./3./4. structured template) or an in-progress
+              // clarifying "question" (plain text) — replay each the way it
+              // was originally rendered.
+              const looksStructured = /###\s*1\./.test(m.content || "");
+              if (looksStructured) {
+                renderStructuredAnswer(
+                  {
+                    reply: m.content,
+                    strength: caseInfo ? caseInfo.strength : null,
+                  },
+                  structuredCount++,
+                );
+              } else if (m.content) {
+                addBubble(m.content, "ai");
+              }
+              chatHistory.push({ role: "model", content: m.content });
+            }
+          });
+
+          if (caseInfo && caseInfo.category) {
+            updateResultCard({
+              category: caseInfo.category,
+              summary: caseInfo.summary,
+              strength: caseInfo.strength,
+            });
+          }
+          if (caseInfo) syncUrlToCase(caseInfo.id);
+
+          chatInput.focus();
+          return;
+        }
+
+        // No saved history — either a brand-new case, or the very first
+        // message handed off from the landing page.
         let initialMessage = null;
         try {
           initialMessage = sessionStorage.getItem("nyaysetu_initial_message");
