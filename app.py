@@ -34,7 +34,7 @@ csrf = CSRFProtect(app)
 with app.app_context():
     db.init_db()
 
-MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15MB, matches the frontend's stated limit
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 15MB, matches the frontend's stated limit
 
 
 def login_required(view_func):
