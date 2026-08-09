@@ -1,7 +1,7 @@
-Flask==3.1.3
-Flask-WTF==1.3.0
-Werkzeug==3.1.8
-python-dotenv==1.2.2
-cloudinary==1.45.0
-google-genai==2.17.0
-gunicorn
+Flask
+Flask-WTF
+cloudinary
+python-dotenv
+psycopg2-binary
+google-genai
+Werkzeug
