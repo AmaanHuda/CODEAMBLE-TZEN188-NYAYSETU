@@ -66,7 +66,7 @@ def login_required(view_func):
 
 @app.route("/")
 def home():
-    return render_template("./templates/main.html")
+    return render_template("main.html")
 
 
 # NOTE: this used to be named `home()` too, which silently overwrote the
@@ -78,7 +78,7 @@ def dashboard():
     # `user` no longer needs to be passed explicitly here — inject_user()
     # above supplies it to every template, including this one. Left the
     # lookup out entirely rather than keep a now-redundant duplicate call.
-    return render_template("./templates/dashboard.html")
+    return render_template("dashboard.html")
 
 
 @app.route("/new-issue")
@@ -97,7 +97,7 @@ def chat():
     # will silently pop active_case_id and start a brand new case, which is
     # exactly the "AI forgets everything" symptom.
     session.pop("active_case_id", None)
-    return render_template("./templates/new_issue.html", pending_upload=_pop_pending_upload())
+    return render_template("new_issue.html", pending_upload=_pop_pending_upload())
 
 
 @app.route("/case/<int:case_id>")
