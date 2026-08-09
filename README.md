@@ -109,12 +109,3 @@ NyaySetu/
 ├── .env
 └── README.md
 
-
-# Security
-NyaySetu includes:
-Password Hashing: Secure salted bcrypt hashing via Werkzeug (generate_password_hash, check_password_hash).
-CSRF Protection: All POST endpoints and form submissions are protected via CSRFProtect.
-Auth Guards: Protected routes enforced via @login_required decorator.
-Environment Variable Isolation: API keys and database strings isolated in .env.
-XSS Safeguards: Document analysis and user outputs sanitized before rendering.
-
