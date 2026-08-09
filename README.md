@@ -110,7 +110,7 @@ NyaySetu/
 └── README.md
 
 
- Security
+# Security
 NyaySetu includes:
 Password Hashing: Secure salted bcrypt hashing via Werkzeug (generate_password_hash, check_password_hash).
 CSRF Protection: All POST endpoints and form submissions are protected via CSRFProtect.
