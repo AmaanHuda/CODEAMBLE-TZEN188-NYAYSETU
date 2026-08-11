@@ -4,9 +4,19 @@ from functools import wraps
 
 import cloudinary
 import cloudinary.uploader
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    flash,
+    jsonify,
+)
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
+from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 
 import db
@@ -36,6 +46,19 @@ with app.app_context():
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100MB, matches the frontend's stated limit
 
+# --- Google OAuth setup ---
+# Requires GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in .env
+# and http(s)://<your-host>/login/google/callback registered as an
+# authorized redirect URI in the Google Cloud Console.
+oauth = OAuth(app)
+google = oauth.register(
+    name="google",
+    client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
+
 
 def login_required(view_func):
     @wraps(view_func)
@@ -64,7 +87,11 @@ def login_submit():
     password = request.form.get("password", "")
 
     user = db.get_user_by_email(email)
-    if not user or not check_password_hash(user["password_hash"], password):
+    if (
+        not user
+        or not user.get("password_hash")
+        or not check_password_hash(user["password_hash"], password)
+    ):
         flash("Incorrect email or password.")
         return redirect(url_for("login"))
 
@@ -90,6 +117,59 @@ def signup():
     user = db.create_user(name, email, generate_password_hash(password))
     session["user_id"] = user["id"]
     return redirect(url_for("chat"))
+
+
+@app.route("/login/google")
+def login_google():
+    # Preserve ?next= across the OAuth round trip via the session, since
+    # Google's redirect back to us won't carry our query params.
+    next_url = request.args.get("next")
+    if next_url:
+        session["post_login_next"] = next_url
+    redirect_uri = url_for("login_google_callback", _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+
+@app.route("/login/google/callback")
+def login_google_callback():
+    try:
+        token = google.authorize_access_token()
+    except Exception:
+        app.logger.exception("Google OAuth token exchange failed")
+        flash("Google sign-in failed. Please try again.")
+        return redirect(url_for("login"))
+
+    userinfo = token.get("userinfo")
+    if not userinfo:
+        # Some providers/configs don't inline userinfo in the token; fetch explicitly.
+        userinfo = google.get("https://openid.net/specs/connect/1_0/userinfo").json()
+
+    google_id = userinfo.get("sub")
+    email = (userinfo.get("email") or "").strip().lower()
+    name = userinfo.get("name") or (email.split("@")[0] if email else "User")
+    email_verified = userinfo.get("email_verified", False)
+
+    if not google_id or not email:
+        flash("Couldn't read your Google account details. Please try again.")
+        return redirect(url_for("login"))
+
+    if not email_verified:
+        flash("Please verify your email with Google before signing in.")
+        return redirect(url_for("login"))
+
+    # Link to an existing account by google_id first, then by email
+    # (covers a user who originally signed up with a password).
+    user = db.get_user_by_google_id(google_id)
+    if not user:
+        user = db.get_user_by_email(email)
+        if user:
+            db.link_google_account(user["id"], google_id)
+        else:
+            user = db.create_google_user(name, email, google_id)
+
+    session["user_id"] = user["id"]
+    next_url = session.pop("post_login_next", None)
+    return redirect(next_url or url_for("chat"))
 
 
 @app.route("/logout")
@@ -137,7 +217,10 @@ def legal_chat():
     # persisted for this case (source of truth is Postgres, not the client).
     prior_messages = db.get_case_messages(case["id"])
     history = [
-        {"role": "model" if m["role"] == "assistant" else "user", "content": m["content"]}
+        {
+            "role": "model" if m["role"] == "assistant" else "user",
+            "content": m["content"],
+        }
         for m in prior_messages
     ]
 
@@ -156,14 +239,23 @@ def legal_chat():
         result = get_legal_ai_reply(history, message)
     except Exception:
         app.logger.exception("Gemini call failed")
-        return jsonify({"error": "Failed to generate a response. Please try again."}), 502
+        return (
+            jsonify({"error": "Failed to generate a response. Please try again."}),
+            502,
+        )
 
     # Persist the assistant's reply
-    db.save_chat_message(case_id=case["id"], role="assistant", content=result.get("reply", ""))
+    db.save_chat_message(
+        case_id=case["id"], role="assistant", content=result.get("reply", "")
+    )
 
     # Keep the case row's category/summary/strength in sync as the model
     # learns more, so a case list / dashboard elsewhere stays accurate.
-    if result.get("category") or result.get("summary") or result.get("strength") is not None:
+    if (
+        result.get("category")
+        or result.get("summary")
+        or result.get("strength") is not None
+    ):
         db.update_case_meta(
             case["id"],
             category=result.get("category"),
@@ -213,7 +305,14 @@ def analyze_document():
         )
     except Exception:
         app.logger.exception("Cloudinary upload failed")
-        return jsonify({"error": "Failed to store the uploaded file. Check server logs / Cloudinary credentials."}), 502
+        return (
+            jsonify(
+                {
+                    "error": "Failed to store the uploaded file. Check server logs / Cloudinary credentials."
+                }
+            ),
+            502,
+        )
 
     file_url = upload_result.get("secure_url")
     file_public_id = upload_result.get("public_id")
@@ -223,13 +322,18 @@ def analyze_document():
     # is already safely on Cloudinary — just degrade to a fallback
     # explanation instead of discarding the upload and erroring out.
     try:
-        result = analyze_legal_document(file_bytes, mime_type=mime_type, file_name=file_name)
+        result = analyze_legal_document(
+            file_bytes, mime_type=mime_type, file_name=file_name
+        )
     except Exception:
-        app.logger.exception("Document analysis failed (file is still stored on Cloudinary: %s)", file_url)
+        app.logger.exception(
+            "Document analysis failed (file is still stored on Cloudinary: %s)",
+            file_url,
+        )
         result = {
             "status": "ERROR",
             "error": "We stored your document, but couldn't automatically analyze it right now. "
-                     "You can still reference it below, and describe its contents in the chat.",
+            "You can still reference it below, and describe its contents in the chat.",
         }
 
     result["file_url"] = file_url
